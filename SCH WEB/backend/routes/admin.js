@@ -11,6 +11,9 @@ import Application from '../models/Application.js';
 import CareerApplication from '../models/CareerApplication.js';
 import ContactMessage from '../models/ContactMessage.js';
 import Notice from '../models/Notice.js';
+import Resource from '../models/Resource.js';
+import Exam from '../models/Exam.js';
+import Submission from '../models/Submission.js';
 import {
   authenticateToken,
   authorizeRoles,
@@ -18,8 +21,17 @@ import {
 } from '../middleware/auth.js';
 import { sendCredentialsEmail, sendAdmissionDecision } from '../utils/email.js';
 import { sendCredentialsSMS, sendAdmissionDecisionSMS } from '../utils/sms.js';
-import { uploadReportCard, uploadStudentPhoto, uploadNoticeAttachments } from '../middleware/upload.js';
-import { getStaffScope, scopedDivisionClassFilter, isWithinScope, noticeDivisionScopeQuery, isNoticeWithinDivisionScope } from '../utils/scope.js';
+import { uploadReportCard, uploadStudentPhoto, uploadNoticeAttachments, uploadResourceFile, uploadQuestionsCsv } from '../middleware/upload.js';
+import { parseQuestionsCsv } from '../utils/csv.js';
+import {
+  getStaffScope,
+  scopedDivisionClassFilter,
+  isWithinScope,
+  noticeDivisionScopeQuery,
+  isNoticeWithinDivisionScope,
+  resourceDivisionScopeQuery,
+  isResourceWithinDivisionScope
+} from '../utils/scope.js';
 
 const router = express.Router();
 
@@ -1964,6 +1976,519 @@ router.delete('/notices/:noticeId', authenticateToken, authorizeRoles('admin', '
       success: false,
       message: 'An error occurred while deleting notice'
     });
+  }
+});
+
+// ===== LEARNING RESOURCES =====
+
+// Get all resources
+router.get('/resources', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const { type, subject, isPublished, page = 1, limit = 20 } = req.query;
+
+    let query = { isActive: true, ...resourceDivisionScopeQuery(req.user) };
+    if (type) query.type = type;
+    if (subject) query.subject = subject;
+    if (isPublished !== undefined) query.isPublished = isPublished === 'true';
+
+    const skip = (page - 1) * limit;
+    const resources = await Resource.find(query)
+      .populate('lastModifiedBy', 'email phone')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Resource.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        resources,
+        pagination: {
+          current: parseInt(page),
+          total: Math.ceil(total / limit),
+          totalRecords: total
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Resources fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while fetching resources'
+    });
+  }
+});
+
+// Create resource. Sent as multipart so an optional file upload (for
+// type 'document') can ride along — divisions/classes arrive as
+// JSON-encoded strings since multipart form fields can't carry arrays natively.
+router.post('/resources', authenticateToken, authorizeRoles('admin', 'staff'), uploadResourceFile, [
+  body('title').trim().isLength({ min: 3, max: 200 }).withMessage('Title must be 3-200 characters'),
+  body('type').isIn(['document', 'video', 'link']).withMessage('Invalid resource type'),
+  body('description').optional({ checkFalsy: true }).trim().isLength({ max: 2000 }),
+  body('subject').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
+  body('externalUrl').optional({ checkFalsy: true }).isURL().withMessage('A valid URL is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array()
+      });
+    }
+
+    let divisions = [];
+    let classes = [];
+    try {
+      if (req.body.divisions) divisions = JSON.parse(req.body.divisions);
+      if (req.body.classes) classes = JSON.parse(req.body.classes);
+    } catch {
+      return res.status(400).json({ success: false, message: 'Invalid divisions/classes payload' });
+    }
+
+    const staffScope = getStaffScope(req.user);
+    if (staffScope) {
+      const outOfScope = divisions.some((d) => d !== staffScope.division);
+      if (divisions.length === 0 || outOfScope) {
+        return res.status(403).json({
+          success: false,
+          message: `As a staff member assigned to ${staffScope.division}, resources must target only the ${staffScope.division} division`
+        });
+      }
+    }
+
+    if (req.body.type === 'document' && !req.file) {
+      return res.status(400).json({ success: false, message: 'A file upload is required for document resources' });
+    }
+
+    const resourceData = {
+      title: req.body.title,
+      description: req.body.description || undefined,
+      subject: req.body.subject || undefined,
+      type: req.body.type,
+      divisions,
+      classes,
+      externalUrl: req.body.externalUrl || undefined,
+      createdBy: req.userId
+    };
+
+    if (req.file) {
+      resourceData.fileUrl = req.file.path;
+      resourceData.fileName = req.file.originalname;
+      resourceData.fileSize = req.file.size;
+    }
+
+    const resource = new Resource(resourceData);
+    await resource.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Resource created successfully',
+      data: resource
+    });
+
+  } catch (error) {
+    console.error('Resource creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'An error occurred while creating resource'
+    });
+  }
+});
+
+// Publish/unpublish a resource
+router.patch('/resources/:resourceId/publish', authenticateToken, authorizeRoles('admin', 'staff'), [
+  body('isPublished').isBoolean().withMessage('isPublished must be a boolean')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const existing = await Resource.findById(req.params.resourceId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Resource not found' });
+    }
+    if (!isResourceWithinDivisionScope(req.user, existing)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    const resource = await Resource.findByIdAndUpdate(
+      req.params.resourceId,
+      { isPublished: req.body.isPublished, lastModifiedBy: req.userId },
+      { new: true }
+    );
+
+    res.json({ success: true, message: 'Resource updated successfully', data: resource });
+
+  } catch (error) {
+    console.error('Resource publish toggle error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while updating resource'
+    });
+  }
+});
+
+// Deactivate (soft-delete) a resource
+router.delete('/resources/:resourceId', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const existing = await Resource.findById(req.params.resourceId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Resource not found' });
+    }
+    if (!isResourceWithinDivisionScope(req.user, existing)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    await Resource.findByIdAndUpdate(req.params.resourceId, { isActive: false });
+
+    res.json({ success: true, message: 'Resource deleted successfully' });
+
+  } catch (error) {
+    console.error('Resource deletion error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while deleting resource'
+    });
+  }
+});
+
+// ===== CBT EXAM SYSTEM =====
+
+// Exams only ever target one division at a time (unlike Notices/Resources),
+// so scope enforcement here is a plain equality check rather than the
+// $or-based helpers those two use.
+const denyIfOutOfExamScope = (req, exam) => {
+  const staffScope = getStaffScope(req.user);
+  if (staffScope && exam.division !== staffScope.division) {
+    return true;
+  }
+  return false;
+};
+
+router.get('/exams', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const { division, subject, isPublished, page = 1, limit = 20 } = req.query;
+
+    const staffScope = getStaffScope(req.user);
+    let query = { isActive: true };
+    if (staffScope) query.division = staffScope.division;
+    else if (division) query.division = division;
+    if (subject) query.subject = subject;
+    if (isPublished !== undefined) query.isPublished = isPublished === 'true';
+
+    const skip = (page - 1) * limit;
+    const exams = await Exam.find(query)
+      .select('-questions.correctAnswer')
+      .sort({ startTime: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Exam.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        exams,
+        pagination: {
+          current: parseInt(page),
+          total: Math.ceil(total / limit),
+          totalRecords: total
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Exams fetch error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while fetching exams' });
+  }
+});
+
+router.get('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam || !exam.isActive) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+    res.json({ success: true, data: exam });
+  } catch (error) {
+    console.error('Exam fetch error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while fetching exam' });
+  }
+});
+
+router.post('/exams', authenticateToken, authorizeRoles('admin', 'staff'), [
+  body('title').trim().isLength({ min: 3, max: 200 }).withMessage('Title must be 3-200 characters'),
+  body('division').isIn(['nursery', 'primary', 'secondary', 'college']).withMessage('Invalid division'),
+  body('durationMinutes').isInt({ min: 1 }).withMessage('Duration must be a positive number of minutes'),
+  body('startTime').isISO8601().withMessage('Valid start time is required'),
+  body('endTime').isISO8601().withMessage('Valid end time is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const staffScope = getStaffScope(req.user);
+    if (staffScope && req.body.division !== staffScope.division) {
+      return res.status(403).json({
+        success: false,
+        message: `As a staff member assigned to ${staffScope.division}, exams must target only the ${staffScope.division} division`
+      });
+    }
+
+    const exam = new Exam({
+      title: req.body.title,
+      description: req.body.description || undefined,
+      subject: req.body.subject || undefined,
+      division: req.body.division,
+      classes: req.body.classes || [],
+      durationMinutes: req.body.durationMinutes,
+      startTime: req.body.startTime,
+      endTime: req.body.endTime,
+      questions: req.body.questions || [],
+      shuffleQuestions: !!req.body.shuffleQuestions,
+      showResultsImmediately: req.body.showResultsImmediately !== false,
+      createdBy: req.userId
+    });
+    await exam.save();
+
+    res.status(201).json({ success: true, message: 'Exam created successfully', data: exam });
+  } catch (error) {
+    console.error('Exam creation error:', error);
+    res.status(400).json({ success: false, message: error.message || 'An error occurred while creating exam' });
+  }
+});
+
+// Edit exam metadata and/or replace its question list entirely — the exam
+// builder UI always sends the full current question list back, so this is a
+// full replace rather than a per-question patch.
+router.patch('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam || !exam.isActive) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    const editable = ['title', 'description', 'subject', 'classes', 'durationMinutes', 'startTime', 'endTime', 'questions', 'shuffleQuestions', 'showResultsImmediately'];
+    editable.forEach((field) => {
+      if (req.body[field] !== undefined) exam[field] = req.body[field];
+    });
+    exam.lastModifiedBy = req.userId;
+
+    await exam.save();
+    res.json({ success: true, message: 'Exam updated successfully', data: exam });
+  } catch (error) {
+    console.error('Exam update error:', error);
+    res.status(400).json({ success: false, message: error.message || 'An error occurred while updating exam' });
+  }
+});
+
+router.patch('/exams/:examId/publish', authenticateToken, authorizeRoles('admin', 'staff'), [
+  body('isPublished').isBoolean().withMessage('isPublished must be a boolean')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam || !exam.isActive) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+    if (req.body.isPublished && exam.questions.length === 0) {
+      return res.status(400).json({ success: false, message: 'Cannot publish an exam with no questions' });
+    }
+
+    exam.isPublished = req.body.isPublished;
+    exam.lastModifiedBy = req.userId;
+    await exam.save();
+
+    res.json({ success: true, message: 'Exam updated successfully', data: exam });
+  } catch (error) {
+    console.error('Exam publish toggle error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while updating exam' });
+  }
+});
+
+router.delete('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    exam.isActive = false;
+    await exam.save();
+
+    res.json({ success: true, message: 'Exam deleted successfully' });
+  } catch (error) {
+    console.error('Exam deletion error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while deleting exam' });
+  }
+});
+
+// Bulk-append questions to an exam from an uploaded CSV (header row:
+// questionText,type,marks,option1..option6,correctAnswer).
+router.post('/exams/:examId/questions/csv', authenticateToken, authorizeRoles('admin', 'staff'), uploadQuestionsCsv, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'A CSV file is required' });
+    }
+
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam || !exam.isActive) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    const { questions, errors } = parseQuestionsCsv(req.file.buffer.toString('utf-8'));
+    if (questions.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid questions found in CSV', errors });
+    }
+
+    exam.questions.push(...questions);
+    exam.lastModifiedBy = req.userId;
+    await exam.save();
+
+    res.json({
+      success: true,
+      message: `${questions.length} question(s) added${errors.length ? `, ${errors.length} row(s) skipped` : ''}`,
+      data: exam,
+      warnings: errors
+    });
+  } catch (error) {
+    console.error('CSV question upload error:', error);
+    res.status(400).json({ success: false, message: error.message || 'An error occurred while processing the CSV' });
+  }
+});
+
+// List all submissions for an exam (for grading + a results overview)
+router.get('/exams/:examId/submissions', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    const submissions = await Submission.find({ examId: req.params.examId })
+      .populate('studentId', 'fullName regNumber class')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: { exam, submissions } });
+  } catch (error) {
+    console.error('Submissions fetch error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while fetching submissions' });
+  }
+});
+
+// Export an exam's results as CSV
+router.get('/exams/:examId/submissions/export', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+
+    const submissions = await Submission.find({ examId: req.params.examId })
+      .populate('studentId', 'fullName regNumber class')
+      .sort({ createdAt: -1 });
+
+    const escape = (value) => {
+      const str = String(value ?? '');
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+
+    const rows = [
+      ['Student Name', 'Reg Number', 'Class', 'Score', 'Max Score', 'Status', 'Submitted At'],
+      ...submissions.map((s) => [
+        s.studentId?.fullName || '',
+        s.studentId?.regNumber || '',
+        s.studentId?.class || '',
+        s.score ?? '',
+        s.maxScore ?? exam.totalMarks,
+        s.status,
+        s.submittedAt ? s.submittedAt.toISOString() : ''
+      ])
+    ];
+    const csv = rows.map((row) => row.map(escape).join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${exam.title.replace(/[^a-z0-9]/gi, '-')}-results.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Results export error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while exporting results' });
+  }
+});
+
+// Manually grade short/essay answers on a submission (mcq answers are
+// already auto-scored at submit time). Body: { answers: [{ questionId, marksAwarded }] }
+router.patch('/submissions/:submissionId/grade', authenticateToken, authorizeRoles('admin', 'staff'), [
+  body('answers').isArray({ min: 1 }).withMessage('answers must be a non-empty array')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const submission = await Submission.findById(req.params.submissionId);
+    if (!submission) {
+      return res.status(404).json({ success: false, message: 'Submission not found' });
+    }
+    const exam = await Exam.findById(submission.examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+    if (submission.status === 'in_progress') {
+      return res.status(400).json({ success: false, message: 'Cannot grade a submission the student has not submitted yet' });
+    }
+
+    req.body.answers.forEach(({ questionId, marksAwarded }) => {
+      const answer = submission.answers.find((a) => a.questionId.toString() === questionId);
+      if (answer) answer.marksAwarded = marksAwarded;
+    });
+
+    submission.recomputeScore();
+    submission.status = 'graded';
+    submission.gradedBy = req.userId;
+    submission.gradedAt = new Date();
+    await submission.save();
+
+    res.json({ success: true, message: 'Submission graded successfully', data: submission });
+  } catch (error) {
+    console.error('Submission grading error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while grading submission' });
   }
 });
 

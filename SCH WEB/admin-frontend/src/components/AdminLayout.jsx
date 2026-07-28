@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { to: '/students', label: 'Students', icon: 'users' },
   { to: '/staff', label: 'Staff', icon: 'userCog', adminOnly: true },
   { to: '/notices', label: 'Notices', icon: 'bell' },
+  { to: '/resources', label: 'Resources', icon: 'bookOpen' },
+  { to: '/exams', label: 'CBT Exams', icon: 'clipboard' },
   { to: '/billing', label: 'Billing', icon: 'creditCard' },
   { to: '/report-cards', label: 'Report Cards', icon: 'fileText' },
   { to: '/settings', label: 'Settings', icon: 'settings' }

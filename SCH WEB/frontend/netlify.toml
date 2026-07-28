@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Client-side routing (React Router) — let index.html handle every path
+# instead of Netlify 404ing on a hard refresh of e.g. /portal/bills
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

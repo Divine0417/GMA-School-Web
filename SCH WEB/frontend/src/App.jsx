@@ -36,6 +36,10 @@ import Profile from './pages/portal/Profile';
 import ReportCards from './pages/portal/ReportCards';
 import Bills from './pages/portal/Bills';
 import Notices from './pages/portal/Notices';
+import Resources from './pages/portal/Resources';
+import Exams from './pages/portal/Exams';
+import ExamResult from './pages/portal/ExamResult';
+import ExamTake from './pages/portal/ExamTake';
 
 // Layout component for public pages
 const PublicLayout = ({ children }) => (
@@ -80,8 +84,19 @@ function App() {
                 <Route path="report-cards" element={<ReportCards />} />
                 <Route path="bills" element={<Bills />} />
                 <Route path="notices" element={<Notices />} />
-                <Route path="resources" element={<div>Learning Resources - Coming Soon</div>} />
+                <Route path="resources" element={<Resources />} />
+                <Route path="exams" element={<Exams />} />
+                <Route path="exams/:examId/result" element={<ExamResult />} />
               </Route>
+
+              {/* CBT exam-taking view — deliberately outside PortalLayout (no
+                  sidebar/header chrome) since it needs to run fullscreen with
+                  minimal distraction, and only the student themself may sit it. */}
+              <Route path="/exam/:examId" element={
+                <ProtectedRoute allowedRoles={['student']}>
+                  <ExamTake />
+                </ProtectedRoute>
+              } />
 
               {/* Admin Routes */}
               <Route path="/admin" element={

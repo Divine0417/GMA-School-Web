@@ -65,6 +65,11 @@ const PortalLayout = () => {
       label: 'School Notices'
     },
     {
+      path: '/portal/exams',
+      icon: 'clock',
+      label: 'CBT Exams'
+    },
+    {
       path: '/portal/resources',
       icon: 'bookOpen',
       label: 'Learning Resources'
