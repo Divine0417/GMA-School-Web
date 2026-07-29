@@ -174,10 +174,10 @@ const Staff = () => {
             <tbody>
               {staff.map((s) => (
                 <tr key={s._id}>
-                  <td>{s.email || '—'}</td>
-                  <td>{s.phone || '—'}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{s.role}</td>
-                  <td>
+                  <td data-label="Email">{s.email || '—'}</td>
+                  <td data-label="Phone">{s.phone || '—'}</td>
+                  <td data-label="Role" style={{ textTransform: 'capitalize' }}>{s.role}</td>
+                  <td data-label="Scope">
                     {s.role !== 'staff' || !s.division ? (
                       <span className="text-secondary text-sm">Unrestricted</span>
                     ) : (
@@ -186,8 +186,8 @@ const Staff = () => {
                       </span>
                     )}
                   </td>
-                  <td><span className={`badge badge-${s.isActive ? 'approved' : 'rejected'}`}>{s.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td>{s.lastLogin ? new Date(s.lastLogin).toLocaleDateString('en-GB') : 'Never'}</td>
+                  <td data-label="Status"><span className={`badge badge-${s.isActive ? 'approved' : 'rejected'}`}>{s.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td data-label="Last Login">{s.lastLogin ? new Date(s.lastLogin).toLocaleDateString('en-GB') : 'Never'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       <button className="btn btn-outline btn-sm" onClick={() => openEditForm(s)}>

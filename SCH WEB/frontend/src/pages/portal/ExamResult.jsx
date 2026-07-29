@@ -86,6 +86,9 @@ const ExamResult = () => {
                   {q.marksAwarded ?? '—'} / {q.marks}
                 </span>
               </div>
+              {q.imageUrl && (
+                <img src={q.imageUrl} alt="" style={{ display: 'block', maxWidth: '100%', maxHeight: 200, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-light)', margin: 'var(--space-2) 0' }} />
+              )}
               <p className="text-secondary text-sm" style={{ margin: 'var(--space-2) 0 0' }}>
                 Your answer: {q.yourAnswer || <em>No answer given</em>}
               </p>

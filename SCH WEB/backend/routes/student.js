@@ -672,6 +672,7 @@ router.get('/:studentId/exams/:examId/result', authenticateToken, authorizeStude
         questionText: q.questionText,
         type: q.type,
         marks: q.marks,
+        imageUrl: q.imageUrl,
         yourAnswer: answer?.answer || '',
         marksAwarded: answer?.marksAwarded,
         correctAnswer: q.type === 'mcq' ? q.correctAnswer : undefined

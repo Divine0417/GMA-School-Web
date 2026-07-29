@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDialog } from '../../contexts/DialogContext';
 import SVGIcon from '../../components/icons/SVGIcon';
 import '../../styles/exam.css';
 
@@ -16,6 +17,7 @@ const ExamTake = () => {
   const { examId } = useParams();
   const navigate = useNavigate();
   const { user, apiCall } = useAuth();
+  const { confirmDialog } = useDialog();
   const selectedChildId = user?.student?.id;
 
   const [phase, setPhase] = useState('loading'); // loading | intro | active | submitting | error
@@ -245,6 +247,9 @@ const ExamTake = () => {
         <main className="exam-question-panel">
           <div className="exam-question-meta">Question {currentIndex + 1} of {exam.questions.length} · {question.marks} mark{question.marks === 1 ? '' : 's'}</div>
           <p className="exam-question-text">{question.questionText}</p>
+          {question.imageUrl && (
+            <img src={question.imageUrl} alt="" className="exam-question-image" />
+          )}
 
           {question.type === 'mcq' ? (
             <div className="exam-options">
@@ -275,7 +280,14 @@ const ExamTake = () => {
             {currentIndex < exam.questions.length - 1 ? (
               <button className="btn btn-outline" onClick={() => setCurrentIndex((i) => i + 1)}>Next</button>
             ) : (
-              <button className="btn btn-primary" onClick={() => { if (window.confirm('Submit your exam? You cannot change your answers after this.')) handleSubmit(false); }}>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  if (await confirmDialog('Submit your exam? You cannot change your answers after this.', { title: 'Submit Exam', confirmLabel: 'Submit' })) {
+                    handleSubmit(false);
+                  }
+                }}
+              >
                 Submit Exam
               </button>
             )}

@@ -122,6 +122,15 @@
   white-space: pre-wrap;
 }
 
+.exam-question-image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  margin-bottom: var(--space-5);
+}
+
 .exam-options {
   display: flex;
   flex-direction: column;

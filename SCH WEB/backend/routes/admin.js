@@ -21,7 +21,7 @@ import {
 } from '../middleware/auth.js';
 import { sendCredentialsEmail, sendAdmissionDecision } from '../utils/email.js';
 import { sendCredentialsSMS, sendAdmissionDecisionSMS } from '../utils/sms.js';
-import { uploadReportCard, uploadStudentPhoto, uploadNoticeAttachments, uploadResourceFile, uploadQuestionsCsv } from '../middleware/upload.js';
+import { uploadReportCard, uploadStudentPhoto, uploadNoticeAttachments, uploadResourceFile, uploadQuestionsCsv, uploadQuestionImage } from '../middleware/upload.js';
 import { parseQuestionsCsv } from '../utils/csv.js';
 import {
   getStaffScope,
@@ -2346,8 +2346,19 @@ router.delete('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staf
   }
 });
 
+// Uploads a single image for a question to attach to (e.g. a diagram) and
+// returns its URL. Not scoped to a specific exam/question — the builder UI
+// attaches the returned URL to whichever question the admin is editing,
+// including before the exam itself has been saved.
+router.post('/exams/question-image', authenticateToken, authorizeRoles('admin', 'staff'), uploadQuestionImage, async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'An image file is required' });
+  }
+  res.json({ success: true, data: { url: req.file.path } });
+});
+
 // Bulk-append questions to an exam from an uploaded CSV (header row:
-// questionText,type,marks,option1..option6,correctAnswer).
+// questionText,type,marks,option1..option6,correctAnswer,imageUrl).
 router.post('/exams/:examId/questions/csv', authenticateToken, authorizeRoles('admin', 'staff'), uploadQuestionsCsv, async (req, res) => {
   try {
     if (!req.file) {

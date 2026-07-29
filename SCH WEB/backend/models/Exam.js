@@ -13,6 +13,7 @@ const questionSchema = new mongoose.Schema({
   },
   options: [String], // mcq only
   correctAnswer: String, // mcq only — must exactly match one entry in `options`
+  imageUrl: String, // optional — e.g. a diagram/photo the question refers to
   marks: {
     type: Number,
     required: true,

@@ -200,13 +200,13 @@ const Notices = () => {
             <tbody>
               {notices.map((n) => (
                 <tr key={n._id}>
-                  <td>{n.isPinned && <Icon name="alertCircle" size={12} className="text-secondary" />} {n.title}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{n.category}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{n.priority}</td>
-                  <td>{new Date(n.expiryDate).toLocaleDateString('en-GB')}</td>
-                  <td>{n.viewCount || 0}</td>
-                  <td className="text-secondary text-sm">{n.lastModifiedBy ? (n.lastModifiedBy.email || n.lastModifiedBy.phone) : '—'}</td>
-                  <td><span className={`badge badge-${n.isPublished ? 'approved' : 'pending'}`}>{n.isPublished ? 'Published' : 'Draft'}</span></td>
+                  <td data-label="Title">{n.isPinned && <Icon name="alertCircle" size={12} className="text-secondary" />} {n.title}</td>
+                  <td data-label="Category" style={{ textTransform: 'capitalize' }}>{n.category}</td>
+                  <td data-label="Priority" style={{ textTransform: 'capitalize' }}>{n.priority}</td>
+                  <td data-label="Expires">{new Date(n.expiryDate).toLocaleDateString('en-GB')}</td>
+                  <td data-label="Views">{n.viewCount || 0}</td>
+                  <td data-label="Last Modified" className="text-secondary text-sm">{n.lastModifiedBy ? (n.lastModifiedBy.email || n.lastModifiedBy.phone) : '—'}</td>
+                  <td data-label="Status"><span className={`badge badge-${n.isPublished ? 'approved' : 'pending'}`}>{n.isPublished ? 'Published' : 'Draft'}</span></td>
                   <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <button className="btn btn-outline btn-sm" onClick={() => togglePublish(n._id, n.isPublished)}>
                       {n.isPublished ? 'Unpublish' : 'Publish'}

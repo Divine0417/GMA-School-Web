@@ -80,6 +80,18 @@ const resourceFileUpload = multer({
   limits: { fileSize: MAX_FILE_SIZE }
 }).single('file');
 
+// Optional image attached to a single CBT exam question (e.g. a diagram the
+// question refers to) — images only, no PDF, unlike the shared fileFilter above.
+const questionImageFileFilter = (req, file, cb) => {
+  if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Only JPG, PNG, or WEBP images are allowed'), false);
+};
+const questionImageUpload = multer({
+  storage: createStorage('exam-question-images', ['jpg', 'jpeg', 'png', 'webp']),
+  fileFilter: questionImageFileFilter,
+  limits: { fileSize: MAX_FILE_SIZE }
+}).single('image');
+
 // Question-bank CSV bulk upload for the CBT exam builder — parsed in memory
 // and discarded immediately, so unlike everything else above this never
 // touches Cloudinary.
@@ -117,3 +129,4 @@ export const uploadStudentPhoto = withUploadErrorHandling(studentPhotoUpload);
 export const uploadNoticeAttachments = withUploadErrorHandling(noticeAttachmentsUpload);
 export const uploadResourceFile = withUploadErrorHandling(resourceFileUpload);
 export const uploadQuestionsCsv = withUploadErrorHandling(csvUpload);
+export const uploadQuestionImage = withUploadErrorHandling(questionImageUpload);

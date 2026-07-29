@@ -188,12 +188,12 @@ const Resources = () => {
             <tbody>
               {resources.map((r) => (
                 <tr key={r._id}>
-                  <td><Icon name={TYPE_ICON[r.type]} size={14} className="text-secondary" /> {r.title}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{r.type}</td>
-                  <td>{r.subject || '—'}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{(r.divisions || []).join(', ') || '—'}</td>
-                  <td className="text-secondary text-sm">{r.lastModifiedBy ? (r.lastModifiedBy.email || r.lastModifiedBy.phone) : '—'}</td>
-                  <td><span className={`badge badge-${r.isPublished ? 'approved' : 'pending'}`}>{r.isPublished ? 'Published' : 'Draft'}</span></td>
+                  <td data-label="Title"><Icon name={TYPE_ICON[r.type]} size={14} className="text-secondary" /> {r.title}</td>
+                  <td data-label="Type" style={{ textTransform: 'capitalize' }}>{r.type}</td>
+                  <td data-label="Subject">{r.subject || '—'}</td>
+                  <td data-label="Divisions" style={{ textTransform: 'capitalize' }}>{(r.divisions || []).join(', ') || '—'}</td>
+                  <td data-label="Last Modified" className="text-secondary text-sm">{r.lastModifiedBy ? (r.lastModifiedBy.email || r.lastModifiedBy.phone) : '—'}</td>
+                  <td data-label="Status"><span className={`badge badge-${r.isPublished ? 'approved' : 'pending'}`}>{r.isPublished ? 'Published' : 'Draft'}</span></td>
                   <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <button className="btn btn-outline btn-sm" onClick={() => togglePublish(r._id, r.isPublished)}>
                       {r.isPublished ? 'Unpublish' : 'Publish'}

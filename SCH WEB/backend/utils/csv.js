@@ -36,8 +36,10 @@ export function parseCsv(text) {
 }
 
 // Parses a question bank CSV with header row:
-// questionText,type,marks,option1,option2,option3,option4,correctAnswer
-// (options/correctAnswer only meaningful for type=mcq; leave blank for short/essay)
+// questionText,type,marks,option1,option2,option3,option4,correctAnswer,imageUrl
+// (options/correctAnswer only meaningful for type=mcq; leave blank for short/essay.
+// imageUrl is optional for every type — a URL to an already-hosted image,
+// since a CSV row can't carry an actual file upload.)
 export function parseQuestionsCsv(text) {
   const rows = parseCsv(text);
   if (rows.length < 2) return { questions: [], errors: ['CSV must have a header row and at least one question'] };
@@ -49,7 +51,8 @@ export function parseQuestionsCsv(text) {
     questionText: col('questiontext'),
     type: col('type'),
     marks: col('marks'),
-    correctAnswer: col('correctanswer')
+    correctAnswer: col('correctanswer'),
+    imageUrl: col('imageurl')
   };
   const optionIdxs = [1, 2, 3, 4, 5, 6].map((n) => col(`option${n}`)).filter((i) => i !== -1);
 
@@ -71,6 +74,9 @@ export function parseQuestionsCsv(text) {
     if (!Number.isFinite(marks) || marks <= 0) { errors.push(`Row ${rowNum}: marks must be a positive number`); return; }
 
     const question = { questionText, type, marks };
+
+    const imageUrl = idx.imageUrl !== -1 ? (cells[idx.imageUrl] || '').trim() : '';
+    if (imageUrl) question.imageUrl = imageUrl;
 
     if (type === 'mcq') {
       const options = optionIdxs.map((oi) => (cells[oi] || '').trim()).filter(Boolean);

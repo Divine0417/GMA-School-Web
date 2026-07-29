@@ -485,6 +485,71 @@
   cursor: pointer;
 }
 
+.staff-student-picker {
+  position: relative;
+  width: 220px;
+}
+
+.staff-student-picker-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  background: white;
+  color: var(--color-text-primary);
+}
+
+.staff-student-picker-input:focus {
+  outline: none;
+  border-color: var(--color-navy);
+}
+
+.staff-student-picker-results {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: var(--z-dropdown);
+}
+
+.staff-student-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+
+.staff-student-picker-item:last-child {
+  border-bottom: none;
+}
+
+.staff-student-picker-item:hover {
+  background: var(--color-surface-light);
+}
+
+.staff-student-picker-empty {
+  color: var(--color-text-secondary);
+  cursor: default;
+}
+
+.staff-student-picker-empty:hover {
+  background: none;
+}
+
 .user-menu {
   position: relative;
   display: flex;

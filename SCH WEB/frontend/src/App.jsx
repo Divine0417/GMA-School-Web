@@ -6,6 +6,7 @@ import './styles/portal.css';
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
+import { DialogProvider } from './contexts/DialogContext';
 
 // Components
 import Header from './components/Header';
@@ -54,9 +55,10 @@ function App() {
   return (
     <HelmetProvider>
       <AuthProvider>
-        <Router>
-          <div className="App">
-            <Routes>
+        <DialogProvider>
+          <Router>
+            <div className="App">
+              <Routes>
               {/* Public Routes with Header/Footer */}
               <Route path="/" element={<PublicLayout><Home /></PublicLayout>} />
               <Route path="/about" element={<PublicLayout><About /></PublicLayout>} />
@@ -108,8 +110,9 @@ function App() {
               {/* 404 Page */}
               <Route path="*" element={<PublicLayout><NotFound /></PublicLayout>} />
             </Routes>
-          </div>
-        </Router>
+            </div>
+          </Router>
+        </DialogProvider>
       </AuthProvider>
     </HelmetProvider>
   );

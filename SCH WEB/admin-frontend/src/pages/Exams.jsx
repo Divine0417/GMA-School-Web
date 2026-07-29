@@ -13,7 +13,8 @@ const emptyQuestion = () => ({
   type: 'mcq',
   marks: 1,
   options: ['', ''],
-  correctAnswer: ''
+  correctAnswer: '',
+  imageUrl: ''
 });
 
 const emptyForm = () => ({
@@ -49,6 +50,7 @@ const Exams = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [knownClasses, setKnownClasses] = useState([]);
   const [csvUploading, setCsvUploading] = useState(false);
+  const [uploadingImageKey, setUploadingImageKey] = useState(null);
 
   const [submissionsExam, setSubmissionsExam] = useState(null);
   const [submissions, setSubmissions] = useState([]);
@@ -112,7 +114,8 @@ const Exams = () => {
         type: q.type,
         marks: q.marks,
         options: q.options?.length ? q.options : ['', ''],
-        correctAnswer: q.correctAnswer || ''
+        correctAnswer: q.correctAnswer || '',
+        imageUrl: q.imageUrl || ''
       }))
     });
     setFormError('');
@@ -163,6 +166,61 @@ const Exams = () => {
     });
   };
 
+  const buildMetadataPayload = () => ({
+    title: form.title,
+    description: form.description || undefined,
+    subject: form.subject || undefined,
+    division: form.division,
+    classes: form.classesText.split(',').map((c) => c.trim()).filter(Boolean),
+    durationMinutes: Number(form.durationMinutes),
+    startTime: new Date(form.startTime).toISOString(),
+    endTime: new Date(form.endTime).toISOString(),
+    shuffleQuestions: form.shuffleQuestions,
+    showResultsImmediately: form.showResultsImmediately
+  });
+
+  // A CSV can be uploaded before the exam itself has ever been saved (e.g.
+  // straight from the "New Exam" form) — this silently creates the exam
+  // from whatever metadata is filled in so far, so the CSV always has a
+  // real exam to attach its questions to.
+  const ensureExamId = async () => {
+    if (editingExamId) return editingExamId;
+
+    if (!form.title.trim() || !form.startTime || !form.endTime) {
+      setFormError('Fill in the title, start time, and end time before uploading a CSV.');
+      return null;
+    }
+
+    const payload = buildMetadataPayload();
+    payload.questions = [];
+    const { data } = await apiCall('/admin/exams', { method: 'POST', body: JSON.stringify(payload) });
+    if (!data.success) {
+      setFormError(data.message || data.errors?.[0]?.msg || 'Failed to create exam before CSV upload');
+      return null;
+    }
+
+    setEditingExamId(data.data._id);
+    fetchExams(pagination.current);
+    return data.data._id;
+  };
+
+  const downloadCsvTemplate = () => {
+    const rows = [
+      'questionText,type,marks,option1,option2,option3,option4,correctAnswer,imageUrl',
+      '"What is 2 + 2?",mcq,1,2,3,4,5,4,',
+      '"What shape is shown in the picture?",mcq,1,Circle,Square,Triangle,Star,Triangle,https://example.com/triangle.png',
+      '"Explain photosynthesis in your own words.",short,3,,,,,,',
+      '"Write a short essay on your favourite hobby.",essay,5,,,,,,'
+    ];
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'exam-questions-template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -184,27 +242,17 @@ const Exams = () => {
       }
     }
 
-    const payload = {
-      title: form.title,
-      description: form.description || undefined,
-      subject: form.subject || undefined,
-      division: form.division,
-      classes: form.classesText.split(',').map((c) => c.trim()).filter(Boolean),
-      durationMinutes: Number(form.durationMinutes),
-      startTime: new Date(form.startTime).toISOString(),
-      endTime: new Date(form.endTime).toISOString(),
-      shuffleQuestions: form.shuffleQuestions,
-      showResultsImmediately: form.showResultsImmediately,
-      questions: form.questions.map((q) => ({
-        questionText: q.questionText,
-        type: q.type,
-        marks: Number(q.marks),
-        ...(q.type === 'mcq' && {
-          options: q.options.map((o) => o.trim()).filter(Boolean),
-          correctAnswer: q.correctAnswer
-        })
-      }))
-    };
+    const payload = buildMetadataPayload();
+    payload.questions = form.questions.map((q) => ({
+      questionText: q.questionText,
+      type: q.type,
+      marks: Number(q.marks),
+      ...(q.imageUrl && { imageUrl: q.imageUrl }),
+      ...(q.type === 'mcq' && {
+        options: q.options.map((o) => o.trim()).filter(Boolean),
+        correctAnswer: q.correctAnswer
+      })
+    }));
 
     const { data } = editingExamId
       ? await apiCall(`/admin/exams/${editingExamId}`, { method: 'PATCH', body: JSON.stringify(payload) })
@@ -219,13 +267,39 @@ const Exams = () => {
     setIsSubmitting(false);
   };
 
+  const handleQuestionImageUpload = async (key, file) => {
+    if (!file) return;
+    setUploadingImageKey(key);
+    const formData = new FormData();
+    formData.append('image', file);
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/exams/question-image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await response.json();
+      if (data.success) {
+        updateQuestion(key, { imageUrl: data.data.url });
+      } else {
+        await alertDialog(data.message || 'Image upload failed');
+      }
+    } catch {
+      await alertDialog('Network error during image upload');
+    }
+    setUploadingImageKey(null);
+  };
+
   const handleCsvUpload = async (file) => {
-    if (!file || !editingExamId) return;
+    if (!file) return;
+    const examId = await ensureExamId();
+    if (!examId) return;
+
     setCsvUploading(true);
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/exams/${editingExamId}/questions/csv`, {
+      const response = await fetch(`${API_BASE_URL}/admin/exams/${examId}/questions/csv`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -240,7 +314,8 @@ const Exams = () => {
             type: q.type,
             marks: q.marks,
             options: q.options?.length ? q.options : ['', ''],
-            correctAnswer: q.correctAnswer || ''
+            correctAnswer: q.correctAnswer || '',
+            imageUrl: q.imageUrl || ''
           }))
         }));
         await alertDialog(data.message + (data.warnings?.length ? `\n\nSkipped:\n${data.warnings.join('\n')}` : ''));
@@ -349,17 +424,17 @@ const Exams = () => {
             <tbody>
               {exams.map((exam) => (
                 <tr key={exam._id}>
-                  <td>{exam.title}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{exam.division}</td>
-                  <td>{exam.subject || '—'}</td>
-                  <td>{exam.questions.length}</td>
-                  <td>{exam.durationMinutes} min</td>
-                  <td className="text-sm text-secondary">
+                  <td data-label="Title">{exam.title}</td>
+                  <td data-label="Division" style={{ textTransform: 'capitalize' }}>{exam.division}</td>
+                  <td data-label="Subject">{exam.subject || '—'}</td>
+                  <td data-label="Questions">{exam.questions.length}</td>
+                  <td data-label="Duration">{exam.durationMinutes} min</td>
+                  <td data-label="Window" className="text-sm text-secondary">
                     {new Date(exam.startTime).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
                     {' → '}
                     {new Date(exam.endTime).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
                   </td>
-                  <td><span className={`badge badge-${exam.isPublished ? 'approved' : 'pending'}`}>{exam.isPublished ? 'Published' : 'Draft'}</span></td>
+                  <td data-label="Status"><span className={`badge badge-${exam.isPublished ? 'approved' : 'pending'}`}>{exam.isPublished ? 'Published' : 'Draft'}</span></td>
                   <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <button className="btn btn-outline btn-sm" onClick={() => openEditForm(exam._id)}>Edit</button>
                     <button className="btn btn-outline btn-sm" onClick={() => togglePublish(exam._id, exam.isPublished)}>
@@ -473,13 +548,14 @@ const Exams = () => {
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--space-5)', marginBottom: 'var(--space-3)' }}>
                 <h4 style={{ margin: 0 }}>Questions ({form.questions.length}, {form.questions.reduce((s, q) => s + (Number(q.marks) || 0), 0)} marks)</h4>
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  {editingExamId && (
-                    <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>
-                      {csvUploading ? <Icon name="loader" size={14} className="spinning" /> : 'Upload CSV'}
-                      <input type="file" accept=".csv" hidden onChange={(e) => handleCsvUpload(e.target.files?.[0])} disabled={csvUploading} />
-                    </label>
-                  )}
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={downloadCsvTemplate}>
+                    Download CSV Template
+                  </button>
+                  <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>
+                    {csvUploading ? <Icon name="loader" size={14} className="spinning" /> : 'Upload CSV'}
+                    <input type="file" accept=".csv" hidden onChange={(e) => handleCsvUpload(e.target.files?.[0])} disabled={csvUploading} />
+                  </label>
                   <button type="button" className="btn btn-outline btn-sm" onClick={addQuestion}>
                     <Icon name="plus" size={14} /> Add Question
                   </button>
@@ -487,7 +563,7 @@ const Exams = () => {
               </div>
               {!editingExamId && (
                 <p className="text-secondary text-sm" style={{ marginTop: 0, marginBottom: 'var(--space-3)' }}>
-                  Save the exam first to unlock CSV bulk upload for its questions.
+                  Uploading a CSV before saving will auto-create the exam from the title/division/schedule above — fill those in first.
                 </p>
               )}
 
@@ -512,6 +588,27 @@ const Exams = () => {
                       <label>Marks</label>
                       <input type="number" min={1} required value={q.marks} onChange={(e) => updateQuestion(q.key, { marks: e.target.value })} />
                     </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Image (optional)</label>
+                    {q.imageUrl ? (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                        <img src={q.imageUrl} alt="" style={{ maxWidth: 200, maxHeight: 140, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }} />
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => updateQuestion(q.key, { imageUrl: '' })}>Remove Image</button>
+                      </div>
+                    ) : (
+                      <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer', display: 'inline-flex', width: 'fit-content' }}>
+                        {uploadingImageKey === q.key ? <Icon name="loader" size={14} className="spinning" /> : 'Add Image'}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          hidden
+                          disabled={uploadingImageKey === q.key}
+                          onChange={(e) => handleQuestionImageUpload(q.key, e.target.files?.[0])}
+                        />
+                      </label>
+                    )}
                   </div>
 
                   {q.type === 'mcq' && (
@@ -588,11 +685,11 @@ const Exams = () => {
                   <tbody>
                     {submissions.map((s) => (
                       <tr key={s._id}>
-                        <td>{s.studentId?.fullName} <span className="text-secondary text-sm">({s.studentId?.regNumber})</span></td>
-                        <td>{s.studentId?.class}</td>
-                        <td>{s.status === 'in_progress' ? '—' : `${s.score ?? 0} / ${s.maxScore ?? submissionsExam.totalMarks}`}</td>
-                        <td style={{ textTransform: 'capitalize' }}>{s.status.replace('_', ' ')}{s.autoSubmitted ? ' (auto)' : ''}</td>
-                        <td className="text-sm text-secondary">{s.submittedAt ? new Date(s.submittedAt).toLocaleString('en-GB') : '—'}</td>
+                        <td data-label="Student">{s.studentId?.fullName} <span className="text-secondary text-sm">({s.studentId?.regNumber})</span></td>
+                        <td data-label="Class">{s.studentId?.class}</td>
+                        <td data-label="Score">{s.status === 'in_progress' ? '—' : `${s.score ?? 0} / ${s.maxScore ?? submissionsExam.totalMarks}`}</td>
+                        <td data-label="Status" style={{ textTransform: 'capitalize' }}>{s.status.replace('_', ' ')}{s.autoSubmitted ? ' (auto)' : ''}</td>
+                        <td data-label="Submitted" className="text-sm text-secondary">{s.submittedAt ? new Date(s.submittedAt).toLocaleString('en-GB') : '—'}</td>
                         <td>
                           {s.status !== 'in_progress' && (
                             <button className="btn btn-outline btn-sm" onClick={() => openGrading(s)}>Grade</button>
@@ -622,6 +719,9 @@ const Exams = () => {
               return (
                 <div key={q._id} className="card" style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
                   <strong>{q.questionText}</strong>
+                  {q.imageUrl && (
+                    <img src={q.imageUrl} alt="" style={{ display: 'block', maxWidth: 240, maxHeight: 160, borderRadius: 'var(--radius-md)', margin: 'var(--space-2) 0' }} />
+                  )}
                   <p className="text-secondary text-sm" style={{ margin: 'var(--space-2) 0' }}>
                     Answer: {answer?.answer || <em>No answer given</em>}
                   </p>
