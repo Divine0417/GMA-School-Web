@@ -80,11 +80,11 @@ const CareerApplications = () => {
             <tbody>
               {items.map((item) => (
                 <tr key={item._id}>
-                  <td>{item.fullName}</td>
-                  <td>{item.position}</td>
-                  <td>{item.email}<br /><span className="text-secondary text-sm">{item.phone}</span></td>
-                  <td>{formatDate(item.createdAt)}</td>
-                  <td>
+                  <td data-label="Name">{item.fullName}</td>
+                  <td data-label="Position">{item.position}</td>
+                  <td data-label="Contact">{item.email}<br /><span className="text-secondary text-sm">{item.phone}</span></td>
+                  <td data-label="Submitted">{formatDate(item.createdAt)}</td>
+                  <td data-label="Status">
                     <select
                       value={item.status}
                       disabled={updatingId === item._id}

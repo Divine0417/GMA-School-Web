@@ -4,7 +4,10 @@ import Student from '../models/Student.js';
 import ReportCard from '../models/ReportCard.js';
 import Invoice from '../models/Invoice.js';
 import Notice from '../models/Notice.js';
-import { 
+import Resource from '../models/Resource.js';
+import Exam from '../models/Exam.js';
+import Submission from '../models/Submission.js';
+import {
   authenticateToken, 
   authorizeRoles, 
   authorizeStudentAccess 
@@ -389,6 +392,324 @@ router.post('/notices/:noticeId/acknowledge', authenticateToken, async (req, res
       success: false,
       message: 'An error occurred while acknowledging notice'
     });
+  }
+});
+
+// Get learning resources for a student's division/class
+router.get('/:studentId/resources', authenticateToken, authorizeStudentAccess, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { type, subject } = req.query;
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    let resources = await Resource.findForUser(student.division, [student.class]);
+
+    if (type && type !== 'all') {
+      resources = resources.filter((resource) => resource.type === type);
+    }
+    if (subject && subject !== 'all') {
+      resources = resources.filter((resource) => resource.subject === subject);
+    }
+
+    res.json({
+      success: true,
+      data: resources
+    });
+
+  } catch (error) {
+    console.error('Resources fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while fetching resources'
+    });
+  }
+});
+
+// ===== CBT EXAM SYSTEM =====
+
+// A student's own attempt is what's actually taking the exam — a
+// parent/staff/admin viewing the same portal shouldn't be able to start,
+// answer, submit, or trigger anti-cheat logging on the student's behalf.
+const requireStudentRole = (req, res, next) => {
+  if (req.userRole !== 'student') {
+    return res.status(403).json({ success: false, message: 'Only the student can take this exam' });
+  }
+  next();
+};
+
+const submissionDeadline = (submission, exam) => new Date(Math.min(
+  submission.startedAt.getTime() + exam.durationMinutes * 60000,
+  exam.endTime.getTime()
+));
+
+// Fisher-Yates — re-shuffled on every fetch, which is fine (and arguably a
+// mild anti-cheat plus) since answers are keyed by questionId, not position.
+const shuffled = (arr) => {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+// Exam lobby — exams available to the student's division/class, with their
+// attempt status on each.
+router.get('/:studentId/exams', authenticateToken, authorizeStudentAccess, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const exams = await Exam.findAvailableForUser(student.division, [student.class]);
+    const submissions = await Submission.find({ studentId, examId: { $in: exams.map((e) => e._id) } });
+    const statusByExam = new Map(submissions.map((s) => [s.examId.toString(), s.status]));
+
+    const data = exams.map((exam) => ({
+      _id: exam._id,
+      title: exam.title,
+      description: exam.description,
+      subject: exam.subject,
+      durationMinutes: exam.durationMinutes,
+      startTime: exam.startTime,
+      endTime: exam.endTime,
+      totalMarks: exam.totalMarks,
+      submissionStatus: statusByExam.get(exam._id.toString()) || 'not_started'
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Exam lobby fetch error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while fetching exams' });
+  }
+});
+
+// Start (or resume) an attempt. Returns the exam with answer keys stripped
+// and a deadline derived from startedAt + duration, so a page refresh can't
+// reset the clock (startedAt lives in the DB, not the browser).
+router.post('/:studentId/exams/:examId/start', authenticateToken, authorizeStudentAccess, requireStudentRole, async (req, res) => {
+  try {
+    const { studentId, examId } = req.params;
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const exam = await Exam.findById(examId);
+    if (!exam || !exam.isPublished || !exam.isActive) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    const inScope = exam.division === student.division && (exam.classes.length === 0 || exam.classes.includes(student.class));
+    if (!inScope) {
+      return res.status(403).json({ success: false, message: 'This exam is not available to your class' });
+    }
+
+    const now = new Date();
+    if (now < exam.startTime) {
+      return res.status(400).json({ success: false, message: 'This exam has not started yet' });
+    }
+    if (now > exam.endTime) {
+      return res.status(400).json({ success: false, message: 'This exam window has closed' });
+    }
+
+    let submission = await Submission.findOne({ examId, studentId });
+    if (submission && submission.status !== 'in_progress') {
+      return res.status(400).json({ success: false, message: 'You have already submitted this exam' });
+    }
+    if (!submission) {
+      submission = new Submission({ examId, studentId, startedAt: now });
+      await submission.save();
+    }
+
+    const studentView = exam.toStudentView();
+    if (exam.shuffleQuestions) studentView.questions = shuffled(studentView.questions);
+
+    res.json({
+      success: true,
+      data: {
+        exam: studentView,
+        submission: { _id: submission._id, startedAt: submission.startedAt, answers: submission.answers },
+        deadline: submissionDeadline(submission, exam)
+      }
+    });
+  } catch (error) {
+    console.error('Exam start error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while starting the exam' });
+  }
+});
+
+// Autosave a single answer — called on an interval by the exam-taking UI.
+router.patch('/:studentId/exams/:examId/answer', authenticateToken, authorizeStudentAccess, requireStudentRole, [
+  body('questionId').notEmpty().withMessage('questionId is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { examId, studentId } = req.params;
+    const submission = await Submission.findOne({ examId, studentId, status: 'in_progress' });
+    if (!submission) {
+      return res.status(404).json({ success: false, message: 'No active attempt found' });
+    }
+    const exam = await Exam.findById(examId);
+    if (new Date() > submissionDeadline(submission, exam)) {
+      return res.status(400).json({ success: false, message: 'Time is up for this exam' });
+    }
+
+    submission.upsertAnswer(req.body.questionId, req.body.answer || '');
+    await submission.save();
+
+    res.json({ success: true, message: 'Answer saved' });
+  } catch (error) {
+    console.error('Answer autosave error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while saving your answer' });
+  }
+});
+
+// Log an anti-cheat event (tab switch / fullscreen exit) without ending the attempt.
+router.post('/:studentId/exams/:examId/violation', authenticateToken, authorizeStudentAccess, requireStudentRole, [
+  body('type').isIn(['tab_switch', 'fullscreen_exit']).withMessage('Invalid violation type')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { examId, studentId } = req.params;
+    const submission = await Submission.findOne({ examId, studentId, status: 'in_progress' });
+    if (!submission) {
+      return res.status(404).json({ success: false, message: 'No active attempt found' });
+    }
+
+    if (req.body.type === 'tab_switch') submission.tabSwitchCount += 1;
+    else submission.fullscreenExitCount += 1;
+    await submission.save();
+
+    res.json({
+      success: true,
+      data: { tabSwitchCount: submission.tabSwitchCount, fullscreenExitCount: submission.fullscreenExitCount }
+    });
+  } catch (error) {
+    console.error('Violation logging error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while logging the violation' });
+  }
+});
+
+// Finalize an attempt — auto-scores mcq answers immediately; short/essay
+// answers wait for manual grading (see admin submission-grading route).
+router.post('/:studentId/exams/:examId/submit', authenticateToken, authorizeStudentAccess, requireStudentRole, async (req, res) => {
+  try {
+    const { examId, studentId } = req.params;
+    const submission = await Submission.findOne({ examId, studentId });
+    if (!submission) {
+      return res.status(404).json({ success: false, message: 'No attempt found for this exam' });
+    }
+    if (submission.status !== 'in_progress') {
+      return res.status(400).json({ success: false, message: 'This exam has already been submitted' });
+    }
+    const exam = await Exam.findById(examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    const now = new Date();
+    submission.submittedAt = now;
+    submission.autoSubmitted = !!req.body.autoSubmitted || now > submissionDeadline(submission, exam);
+    submission.autoScore(exam);
+    await submission.save();
+
+    res.json({
+      success: true,
+      message: 'Exam submitted successfully',
+      data: {
+        status: submission.status,
+        ...(exam.showResultsImmediately && { score: submission.score, maxScore: submission.maxScore })
+      }
+    });
+  } catch (error) {
+    console.error('Exam submit error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while submitting the exam' });
+  }
+});
+
+// Result view — full breakdown once submitted (immediately, or only after
+// grading, per the exam's showResultsImmediately setting).
+router.get('/:studentId/exams/:examId/result', authenticateToken, authorizeStudentAccess, async (req, res) => {
+  try {
+    const { examId, studentId } = req.params;
+    const submission = await Submission.findOne({ examId, studentId });
+    if (!submission || submission.status === 'in_progress') {
+      return res.status(404).json({ success: false, message: 'No result available yet' });
+    }
+    const exam = await Exam.findById(examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    if (!exam.showResultsImmediately && submission.status !== 'graded') {
+      return res.json({
+        success: true,
+        data: { status: submission.status, pending: true, submittedAt: submission.submittedAt }
+      });
+    }
+
+    const breakdown = exam.questions.map((q) => {
+      const answer = submission.answers.find((a) => a.questionId.toString() === q._id.toString());
+      return {
+        questionText: q.questionText,
+        type: q.type,
+        marks: q.marks,
+        imageUrl: q.imageUrl,
+        yourAnswer: answer?.answer || '',
+        marksAwarded: answer?.marksAwarded,
+        correctAnswer: q.type === 'mcq' ? q.correctAnswer : undefined
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        status: submission.status,
+        score: submission.score,
+        maxScore: submission.maxScore,
+        submittedAt: submission.submittedAt,
+        autoSubmitted: submission.autoSubmitted,
+        breakdown
+      }
+    });
+  } catch (error) {
+    console.error('Exam result fetch error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while fetching the result' });
+  }
+});
+
+// Exam history — every past attempt, most recent first.
+router.get('/:studentId/exam-history', authenticateToken, authorizeStudentAccess, async (req, res) => {
+  try {
+    const submissions = await Submission.find({
+      studentId: req.params.studentId,
+      status: { $in: ['submitted', 'graded'] }
+    })
+      .populate('examId', 'title subject startTime')
+      .sort({ submittedAt: -1 });
+
+    res.json({ success: true, data: submissions });
+  } catch (error) {
+    console.error('Exam history fetch error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while fetching exam history' });
   }
 });
 

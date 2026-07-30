@@ -263,12 +263,12 @@ const ReportCards = () => {
             <tbody>
               {reportCards.map((rc) => (
                 <tr key={rc._id}>
-                  <td>{rc.studentId?.fullName}<br /><span className="text-secondary text-sm">{rc.studentId?.regNumber}</span></td>
-                  <td style={{ textTransform: 'capitalize' }}>{rc.division} / {rc.class}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{rc.term}</td>
-                  <td>{rc.session}</td>
-                  <td><span className="badge badge-pending" style={{ textTransform: 'capitalize' }}>{rc.type}</span></td>
-                  <td><span className={`badge badge-${rc.isPublished ? 'approved' : 'pending'}`}>{rc.isPublished ? 'Published' : 'Draft'}</span></td>
+                  <td data-label="Student">{rc.studentId?.fullName}<br /><span className="text-secondary text-sm">{rc.studentId?.regNumber}</span></td>
+                  <td data-label="Division / Class" style={{ textTransform: 'capitalize' }}>{rc.division} / {rc.class}</td>
+                  <td data-label="Term" style={{ textTransform: 'capitalize' }}>{rc.term}</td>
+                  <td data-label="Session">{rc.session}</td>
+                  <td data-label="Type"><span className="badge badge-pending" style={{ textTransform: 'capitalize' }}>{rc.type}</span></td>
+                  <td data-label="Status"><span className={`badge badge-${rc.isPublished ? 'approved' : 'pending'}`}>{rc.isPublished ? 'Published' : 'Draft'}</span></td>
                   <td>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       {rc.type === 'manual' ? (

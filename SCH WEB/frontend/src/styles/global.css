@@ -308,6 +308,62 @@ a:hover {
   color: var(--color-navy);
 }
 
+/* Confirm/alert dialog (replaces window.confirm/window.alert) */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 31, 68, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  padding: var(--space-4);
+}
+
+.dialog-panel {
+  background: var(--color-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  max-width: 420px;
+  width: 100%;
+  padding: var(--space-6);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+}
+
+.dialog-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  display: flex;
+  padding: var(--space-1);
+}
+
+.dialog-message {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-6);
+  white-space: pre-wrap;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
 /* Button Sizes */
 .btn-sm {
   padding: var(--space-2) var(--space-4);

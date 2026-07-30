@@ -12,6 +12,8 @@ import Messages from './pages/Messages';
 import Students from './pages/Students';
 import Staff from './pages/Staff';
 import Notices from './pages/Notices';
+import Resources from './pages/Resources';
+import Exams from './pages/Exams';
 import Settings from './pages/Settings';
 import Billing from './pages/Billing';
 import ReportCards from './pages/ReportCards';
@@ -45,6 +47,8 @@ function App() {
                 }
               />
               <Route path="notices" element={<Notices />} />
+              <Route path="resources" element={<Resources />} />
+              <Route path="exams" element={<Exams />} />
               <Route path="billing" element={<Billing />} />
               <Route path="report-cards" element={<ReportCards />} />
               <Route path="settings" element={<Settings />} />

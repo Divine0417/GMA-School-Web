@@ -131,11 +131,11 @@ const Dashboard = () => {
               <tbody>
                 {stats.applications.recent.map((app) => (
                   <tr key={app._id}>
-                    <td>{app.applicationNumber}</td>
-                    <td>{[app.applicantName?.firstName, app.applicantName?.lastName].filter(Boolean).join(' ')}</td>
-                    <td style={{ textTransform: 'capitalize' }}>{app.divisionApplied}</td>
-                    <td>{formatDate(app.createdAt)}</td>
-                    <td><span className={`badge badge-${app.status}`}>{app.status.replace('_', ' ')}</span></td>
+                    <td data-label="Application #">{app.applicationNumber}</td>
+                    <td data-label="Applicant">{[app.applicantName?.firstName, app.applicantName?.lastName].filter(Boolean).join(' ')}</td>
+                    <td data-label="Division" style={{ textTransform: 'capitalize' }}>{app.divisionApplied}</td>
+                    <td data-label="Submitted">{formatDate(app.createdAt)}</td>
+                    <td data-label="Status"><span className={`badge badge-${app.status}`}>{app.status.replace('_', ' ')}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -166,12 +166,12 @@ const Dashboard = () => {
               <tbody>
                 {stats.financial.defaulters.map((d) => (
                   <tr key={d.studentId}>
-                    <td>{d.studentName}<br /><span className="text-secondary text-sm">{d.regNumber}</span></td>
-                    <td style={{ textTransform: 'capitalize' }}>{d.division} / {d.class}</td>
-                    <td>{d.parentName}<br /><span className="text-secondary text-sm">{d.parentPhone}</span></td>
-                    <td><strong>{formatCurrency(d.totalOwed)}</strong></td>
-                    <td>{d.invoiceCount}</td>
-                    <td>{formatDate(d.oldestDueDate)}</td>
+                    <td data-label="Student">{d.studentName}<br /><span className="text-secondary text-sm">{d.regNumber}</span></td>
+                    <td data-label="Division / Class" style={{ textTransform: 'capitalize' }}>{d.division} / {d.class}</td>
+                    <td data-label="Parent Contact">{d.parentName}<br /><span className="text-secondary text-sm">{d.parentPhone}</span></td>
+                    <td data-label="Amount Owed"><strong>{formatCurrency(d.totalOwed)}</strong></td>
+                    <td data-label="Overdue Invoices">{d.invoiceCount}</td>
+                    <td data-label="Oldest Due">{formatDate(d.oldestDueDate)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         {d.parentPhone && <a className="btn btn-outline btn-sm" href={`tel:${d.parentPhone}`}><Icon name="phone" size={14} /></a>}

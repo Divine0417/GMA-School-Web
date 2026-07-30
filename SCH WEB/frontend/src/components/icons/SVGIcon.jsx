@@ -58,6 +58,19 @@ const SVGIcon = ({ name, size = 24, className = '', color = 'currentColor', ...p
         <polyline points="8.21,13.89 7,23 12,20 17,23 15.79,13.88"/>
       </svg>
     ),
+    video: (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+        <polygon points="23,7 16,12 23,17 23,7"/>
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+      </svg>
+    ),
+    'external-link': (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+        <polyline points="15,3 21,3 21,9"/>
+        <line x1="10" y1="14" x2="21" y2="3"/>
+      </svg>
+    ),
     target: (
       <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
         <circle cx="12" cy="12" r="10"/>

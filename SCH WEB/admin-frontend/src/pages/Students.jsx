@@ -332,12 +332,12 @@ const Students = () => {
             <tbody>
               {students.map((s) => (
                 <tr key={s._id}>
-                  <td>{s.regNumber}</td>
-                  <td>{s.fullName}</td>
-                  <td>{s.division} / {s.class}</td>
-                  <td>{s.parentInfo.name}<br /><span className="text-secondary text-sm">{s.parentInfo.phone}</span></td>
-                  <td><span className={`badge badge-${s.userId?.isActive ? 'approved' : 'rejected'}`}>{s.userId?.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td><span className={`badge badge-${s.status === 'graduated' ? 'pending' : 'approved'}`}>{s.status === 'graduated' ? 'Graduated' : 'Active'}</span></td>
+                  <td data-label="Reg Number">{s.regNumber}</td>
+                  <td data-label="Name">{s.fullName}</td>
+                  <td data-label="Division / Class">{s.division} / {s.class}</td>
+                  <td data-label="Parent Contact">{s.parentInfo.name}<br /><span className="text-secondary text-sm">{s.parentInfo.phone}</span></td>
+                  <td data-label="Portal Account"><span className={`badge badge-${s.userId?.isActive ? 'approved' : 'rejected'}`}>{s.userId?.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td data-label="Status"><span className={`badge badge-${s.status === 'graduated' ? 'pending' : 'approved'}`}>{s.status === 'graduated' ? 'Graduated' : 'Active'}</span></td>
                   <td>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       <button className="btn btn-outline btn-sm" onClick={() => openEditForm(s)}>

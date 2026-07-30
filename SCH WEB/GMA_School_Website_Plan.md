@@ -240,16 +240,18 @@ gmaschool.edu.ng/
 - [x] Transactional SMS (Termii, code wired up — needs a real `TERMII_API_KEY` to actually deliver) — portal credentials and password resets for parents without email
 - [x] **Automatic account provisioning** — approving an admission application auto-creates both a student account (reg-number login) and the parent's portal account (reusing one across siblings), links them via the Student record, and sends both sets of credentials to the parent's phone/email. No more manual re-entry of the same data into a second form
 - [x] Student portal — Dashboard (verified against the backend response shape) and Profile (account info + change-password form, replacing the old "Coming Soon" placeholder) are both built
-- [ ] Report card module — admin upload API, student view/download — not built (route is a "Coming Soon" placeholder)
-- [ ] Bills module — fee schedule display, payment status — not built (route is a "Coming Soon" placeholder)
-- [ ] Paystack integration — generate payment links via API — not started (test env vars are in place)
-- [ ] School notices module (CRUD operations) — backend API exists (`POST /admin/notices`); no admin UI page yet
-- [ ] Learning resources module (file upload) — not built; file uploads elsewhere (documents, photos, cover letters) use Cloudinary
+- [x] Report card module — fully built end-to-end. Model supports both manual score entry (auto-computed grade/remark, draft/publish workflow) and PDF upload (Cloudinary). Admin UI (`admin-frontend/ReportCards.jsx`): student search, score entry, PDF upload, publish/unpublish, print-style preview. Student UI (`frontend/portal/ReportCards.jsx`): formatted on-screen report + PDF download.
+- [x] Bills module — fully built. `FeeSchedule`/`Invoice` models (installments, optional fee items, discounts, auto status transitions). Admin UI (`admin-frontend/Billing.jsx`, tabs for Invoices + Fee Schedules): fee schedule builder, invoice generation, record payments, apply discounts. Student UI (`frontend/portal/Bills.jsx`): outstanding/paid summary, fee breakdown, optional-item toggles, payment history.
+- [x] Paystack integration — fully built (`backend/routes/payment.js`, real `fetch` calls, no SDK dependency needed). `/payment/initialize` + `/payment/verify/:reference` + `/payment/webhook` (HMAC signature verified). Student Bills.jsx "Pay Now" redirects to Paystack hosted checkout and auto-verifies on return. Not yet confirmed against a live Paystack test account at runtime (see Go-Live Checklist).
+- [x] School notices module (CRUD operations) — fully built both sides. Admin UI (`admin-frontend/Notices.jsx`): create/edit with role+division+class targeting, category/priority, attachments, pin/publish. Student UI (`frontend/portal/Notices.jsx`): filtering, read tracking, acknowledge-required notices.
+- [x] Learning resources module — built 2026-07-28. `Resource` model (document/video/link types, division+class targeting, Cloudinary upload for documents incl. Word/PowerPoint). Admin UI (`admin-frontend/Resources.jsx`): create/publish/delete. Student UI (`frontend/portal/Resources.jsx`): filter by type/subject, open/download.
 - [x] **Admin console app** — built as a separate standalone frontend (`admin-frontend/`), subdomain-ready. Includes: Dashboard (stats), Applications review (approve/reject/waitlist, auto-provisions on approval), Career Applications review, Contact Messages (view/reply/mark status), Students (search + manual create with the same phone/email-optional credential flow)
-- [ ] Staff management UI — backend endpoint exists (`POST /auth/admin/register`) but no admin-frontend page to list/create staff yet
-- [ ] Billing management panel for Bursar role — not started
+- [x] Staff management UI — `admin-frontend/Staff.jsx`: list/search staff, add/edit (role, email/phone, division/class scoping), activate/deactivate. No hard-delete (soft-deactivate only, intentional).
+- [x] Billing management panel — covered by `admin-frontend/Billing.jsx` above; not separately role-gated to a distinct "Bursar" role, but the functionality itself is complete.
 
-**Deliverable:** Fully functional student portal + core admin console
+**Deliverable:** Fully functional student portal + core admin console — **achieved**, all items built.
+
+> **2026-07-28 correction:** this Phase 2 section previously described most of these items as unbuilt "Coming Soon" placeholders. A code audit found that was stale — Report Cards, Bills, Paystack, Notices, and Staff management are all fully implemented with no TODO/stub code anywhere in the actual `.js`/`.jsx` files. Keep this doc's checkboxes in sync with reality going forward; don't let it drift again.
 
 > Note on the removed self-registration flow: earlier the plan assumed parents/students would sign themselves up via a public `/register` page. That page, its route, and its backend endpoint have been deleted — replaced by automatic provisioning on admission approval (see above), since manual self-registration was redundant and login-by-phone made "type your email to match our records" awkward for phone-only parents. The header/footer "Apply Now" CTA and the Login page's footer link both now point straight to the Admissions form.
 
@@ -260,19 +262,19 @@ gmaschool.edu.ng/
 ### Phase 3 — CBT Exam System
 **Duration: Weeks 10–14**
 
-- [ ] Exam builder React components in admin console
-- [ ] Question bank API endpoints (manual entry + CSV upload processing)
-- [ ] Exam scheduling API (date/time window per class)
-- [ ] Student exam lobby React component
-- [ ] Timed exam engine (JavaScript countdown, auto-submit)
-- [ ] Answer auto-saving (setInterval to POST answers every 30s)
-- [ ] Anti-cheat: JavaScript tab-switch detection, fullscreen API
-- [ ] MCQ auto-scoring logic in Express.js
-- [ ] Results page React components for students
-- [ ] Results export API (CSV generation) for admin
-- [ ] Exam history view with pagination
+- [x] Exam builder React components in admin console — `admin-frontend/Exams.jsx`: metadata form, inline question builder (mcq/short/essay), live marks total
+- [x] Question bank API endpoints (manual entry + CSV upload processing) — `POST /admin/exams` (manual), `POST /admin/exams/:id/questions/csv` (bulk, via a small dependency-free CSV parser in `backend/utils/csv.js`)
+- [x] Exam scheduling API (date/time window per class) — `Exam.division` + `Exam.classes`, `startTime`/`endTime` window
+- [x] Student exam lobby React component — `frontend/portal/Exams.jsx` (Upcoming/Active + History tabs)
+- [x] Timed exam engine (JavaScript countdown, auto-submit) — `frontend/portal/ExamTake.jsx`; deadline is derived server-side from `submission.startedAt` (survives refresh, per the plan's own risk mitigation above)
+- [x] Answer auto-saving — saves on every change plus a 30s safety-net flush (`PATCH /student/:id/exams/:examId/answer`)
+- [x] Anti-cheat: tab-switch detection (`visibilitychange`), fullscreen enforcement (`fullscreenchange`, re-prompts on exit), copy/paste/right-click blocked, violations logged server-side (`tabSwitchCount`/`fullscreenExitCount` on the submission)
+- [x] MCQ auto-scoring logic in Express.js — `Submission.autoScore()`; short/essay wait for manual grading (`PATCH /admin/submissions/:id/grade`)
+- [x] Results page React components for students — `frontend/portal/ExamResult.jsx`, respects the exam's `showResultsImmediately` flag
+- [x] Results export API (CSV generation) for admin — `GET /admin/exams/:id/submissions/export`
+- [x] Exam history view — folded into `frontend/portal/Exams.jsx`'s History tab
 
-**Deliverable:** Fully operational online CBT system
+**Deliverable:** Fully operational online CBT system — built 2026-07-28, both frontends build clean. **Not yet tested against a running app + real MongoDB/browser** — no dev server or live exam attempt has been run. Treat as code-complete, not verified, until someone actually sits a test exam end to end.
 
 ---
 
@@ -483,20 +485,16 @@ Before development starts, gather the following:
 - [ ] Replace `frontend/public/favicon.svg` with the real crest — currently the only place the old placeholder mark still shows up
 - [ ] Get a real `TERMII_API_KEY` (+ approved sender ID) — SMS code is fully wired up but can't deliver without it, which matters most for parents without email and for every student login (always sent via the parent's contact, never has its own)
 - [ ] Verify a custom domain in Resend — currently email can only deliver to one sandbox address
-- [ ] Notices admin UI — backend API already exists, just needs a page in `admin-frontend/`
-- [ ] Staff management UI — backend endpoint exists, just needs a page to list/create staff accounts
+- [x] ~~Notices admin UI~~ — done, `admin-frontend/Notices.jsx`
+- [x] ~~Staff management UI~~ — done, `admin-frontend/Staff.jsx`
 - [ ] Change-password UI in the **admin console** specifically (the student/parent portal now has this; the seeded admin password should still be rotated via the API directly for now)
 - [ ] A way for a parent with more than one child to switch between them — right now the dashboard and profile both only show/link the first child found
 
-**Bigger next milestone — finish the Phase 2 student/parent portal:**
-Profile (account info + password change) and Dashboard are done. Report Cards, Bills & Payments, and Paystack integration are still "Coming Soon" placeholders — that's the biggest remaining gap versus the original plan.
+**2026-07-28 — Phase 2 and Phase 3 are now both code-complete.** Learning Resources module and the full CBT exam system (builder, timed engine, anti-cheat, auto-scoring, results, CSV export) were built in this session. Neither has been run against a live dev server/database yet — see the note at the end of the Phase 3 section above. Next real step is smoke-testing both end to end (create a resource and view it as a student; publish an exam, sit it as a test student account, confirm the timer/autosave/anti-cheat/scoring all actually work against a running app), not more building.
 
-**After that — deployment:**
-Public site, backend API, and admin console are all functionally ready for a first deploy (frontend/backend to Netlify+Railway or similar, admin-frontend to its own subdomain) once a domain is bought. Real users touching the live system tends to surface issues faster than more local building.
-
-**Later — Phase 3 (CBT exam system):**
-Not started at all yet; lowest priority until the portal and deployment are solid, since it's the most complex remaining piece (timed exams, anti-cheat, auto-scoring).
+**Next milestone — deployment:**
+Public site, backend API, and admin console are all functionally ready for a first deploy (frontend/backend to Netlify+Railway or similar, admin-frontend to its own subdomain) once a domain is bought. `DEPLOYMENT.md` (in this same directory) has the full step-by-step: database → backend → public site → admin console, with every required env var listed. `netlify.toml` (frontend/, admin-frontend/) and `render.yaml` (backend/) are already in place. Nothing is actually deployed yet — no hosting accounts or domain exist as of this note. Real users touching the live system tends to surface issues faster than more local building.
 
 ---
 
-*Plan version 1.2 — GMA School Website System*
+*Plan version 1.3 — GMA School Website System*

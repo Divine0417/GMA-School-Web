@@ -84,10 +84,10 @@ const Messages = () => {
             <tbody>
               {messages.map((msg) => (
                 <tr key={msg._id} style={{ fontWeight: msg.status === 'new' ? 700 : 400 }}>
-                  <td>{msg.name}<br /><span className="text-secondary text-sm" style={{ fontWeight: 400 }}>{msg.email}</span></td>
-                  <td>{msg.subject || 'General enquiry'}</td>
-                  <td>{formatDate(msg.createdAt)}</td>
-                  <td><span className={`badge badge-${msg.status}`}>{msg.status}</span></td>
+                  <td data-label="From">{msg.name}<br /><span className="text-secondary text-sm" style={{ fontWeight: 400 }}>{msg.email}</span></td>
+                  <td data-label="Subject">{msg.subject || 'General enquiry'}</td>
+                  <td data-label="Received">{formatDate(msg.createdAt)}</td>
+                  <td data-label="Status"><span className={`badge badge-${msg.status}`}>{msg.status}</span></td>
                   <td>
                     <button className="btn btn-outline btn-sm" onClick={() => openMessage(msg)}>View</button>
                   </td>

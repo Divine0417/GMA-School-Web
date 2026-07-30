@@ -6,6 +6,7 @@ import './styles/portal.css';
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
+import { DialogProvider } from './contexts/DialogContext';
 
 // Components
 import Header from './components/Header';
@@ -36,6 +37,10 @@ import Profile from './pages/portal/Profile';
 import ReportCards from './pages/portal/ReportCards';
 import Bills from './pages/portal/Bills';
 import Notices from './pages/portal/Notices';
+import Resources from './pages/portal/Resources';
+import Exams from './pages/portal/Exams';
+import ExamResult from './pages/portal/ExamResult';
+import ExamTake from './pages/portal/ExamTake';
 
 // Layout component for public pages
 const PublicLayout = ({ children }) => (
@@ -50,9 +55,10 @@ function App() {
   return (
     <HelmetProvider>
       <AuthProvider>
-        <Router>
-          <div className="App">
-            <Routes>
+        <DialogProvider>
+          <Router>
+            <div className="App">
+              <Routes>
               {/* Public Routes with Header/Footer */}
               <Route path="/" element={<PublicLayout><Home /></PublicLayout>} />
               <Route path="/about" element={<PublicLayout><About /></PublicLayout>} />
@@ -80,8 +86,19 @@ function App() {
                 <Route path="report-cards" element={<ReportCards />} />
                 <Route path="bills" element={<Bills />} />
                 <Route path="notices" element={<Notices />} />
-                <Route path="resources" element={<div>Learning Resources - Coming Soon</div>} />
+                <Route path="resources" element={<Resources />} />
+                <Route path="exams" element={<Exams />} />
+                <Route path="exams/:examId/result" element={<ExamResult />} />
               </Route>
+
+              {/* CBT exam-taking view — deliberately outside PortalLayout (no
+                  sidebar/header chrome) since it needs to run fullscreen with
+                  minimal distraction, and only the student themself may sit it. */}
+              <Route path="/exam/:examId" element={
+                <ProtectedRoute allowedRoles={['student']}>
+                  <ExamTake />
+                </ProtectedRoute>
+              } />
 
               {/* Admin Routes */}
               <Route path="/admin" element={
@@ -93,8 +110,9 @@ function App() {
               {/* 404 Page */}
               <Route path="*" element={<PublicLayout><NotFound /></PublicLayout>} />
             </Routes>
-          </div>
-        </Router>
+            </div>
+          </Router>
+        </DialogProvider>
       </AuthProvider>
     </HelmetProvider>
   );

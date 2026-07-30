@@ -19,9 +19,18 @@ const Dashboard = () => {
     let cancelled = false;
 
     const fetchDashboardData = async () => {
+      // Students always have their own record; parents/staff/admin only
+      // have one once a child/student has actually been selected (staff and
+      // admin have no personal record of their own, so this is always the
+      // case for them — see the render guard below).
+      if (user?.role !== 'student' && !selectedChildId) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
-        const query = user?.role === 'parent' && selectedChildId ? `?studentId=${selectedChildId}` : '';
+        const query = selectedChildId ? `?studentId=${selectedChildId}` : '';
         const { data } = await apiCall(`/student/dashboard${query}`);
         if (cancelled) return;
 
@@ -50,6 +59,22 @@ const Dashboard = () => {
       currency: 'NGN'
     }).format(amount);
   };
+
+  if (user?.role !== 'student' && !selectedChildId) {
+    return (
+      <div className="dashboard">
+        <div className="card">
+          <div className="card-body">
+            <p>
+              {user?.role === 'parent'
+                ? 'Select a student to view their dashboard.'
+                : 'Search for a student using the box at the top of the page to view their dashboard. No students found in your assigned division/class yet.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

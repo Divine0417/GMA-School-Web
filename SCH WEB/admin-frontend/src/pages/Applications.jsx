@@ -124,12 +124,12 @@ const Applications = () => {
             <tbody>
               {applications.map((app) => (
                 <tr key={app._id}>
-                  <td>{app.applicationNumber}</td>
-                  <td>{fullName(app)}</td>
-                  <td>{app.divisionApplied} / {app.classApplied}</td>
-                  <td>{app.parentInfo.father.name}<br /><span className="text-secondary text-sm">{app.parentInfo.father.phone}</span></td>
-                  <td>{formatDate(app.createdAt)}</td>
-                  <td>
+                  <td data-label="Application #">{app.applicationNumber}</td>
+                  <td data-label="Student">{fullName(app)}</td>
+                  <td data-label="Division / Class">{app.divisionApplied} / {app.classApplied}</td>
+                  <td data-label="Father">{app.parentInfo.father.name}<br /><span className="text-secondary text-sm">{app.parentInfo.father.phone}</span></td>
+                  <td data-label="Submitted">{formatDate(app.createdAt)}</td>
+                  <td data-label="Status">
                     <select
                       value={app.status}
                       disabled={updatingId === app._id}

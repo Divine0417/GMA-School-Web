@@ -66,3 +66,24 @@ export function isNoticeWithinDivisionScope(user, notice) {
   const divisions = notice.targetAudience?.divisions || [];
   return divisions.includes('all') || divisions.includes(scope.division);
 }
+
+// Same idea as the notice helpers above, but resources store their
+// divisions at the top level (`divisions`) rather than nested under
+// `targetAudience`.
+export function resourceDivisionScopeQuery(user) {
+  const scope = getStaffScope(user);
+  if (!scope) return {};
+  return {
+    $or: [
+      { divisions: 'all' },
+      { divisions: scope.division }
+    ]
+  };
+}
+
+export function isResourceWithinDivisionScope(user, resource) {
+  const scope = getStaffScope(user);
+  if (!scope) return true;
+  const divisions = resource.divisions || [];
+  return divisions.includes('all') || divisions.includes(scope.division);
+}

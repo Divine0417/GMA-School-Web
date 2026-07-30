@@ -140,6 +140,77 @@ button {
   background: var(--color-surface-light);
 }
 
+/* Below tablet width, tables stop scrolling horizontally and each row
+   becomes its own card instead — every <td> that isn't purely an actions
+   cell needs a matching `data-label` attribute (mirroring its <th> text)
+   so the label can be reconstructed via ::before, since the <thead> itself
+   is hidden at this size. */
+@media (max-width: 768px) {
+  .data-table-wrap {
+    overflow-x: visible;
+    background: none;
+    border: none;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table, .data-table tbody, .data-table tr, .data-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table tr {
+    background: white;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--space-4);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .data-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .data-table td {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-4);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border-light);
+    text-align: right;
+  }
+
+  .data-table td:last-child {
+    border-bottom: none;
+  }
+
+  .data-table td[data-label]::before {
+    content: attr(data-label);
+    margin-right: auto;
+    text-align: left;
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  /* Actions cells have no label and hold buttons, not a value — let them
+     wrap and sit flush left instead of pretending to be a labeled row. */
+  .data-table td:not([data-label]) {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .data-table tr:hover td {
+    background: none;
+  }
+}
+
 /* Badges */
 .badge {
   display: inline-flex;
@@ -204,6 +275,8 @@ button {
 .password-toggle-btn {
   position: absolute;
   right: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
   border: none;
   cursor: pointer;

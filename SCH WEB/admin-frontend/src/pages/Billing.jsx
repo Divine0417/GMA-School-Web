@@ -311,15 +311,15 @@ const Billing = () => {
                     const nextDue = group.find((inv) => inv.balance > 0)?.dueDate || first.dueDate;
                     return (
                       <tr key={first._id}>
-                        <td>
+                        <td data-label="Invoice #">
                           {first.invoiceNumber}
                           {group.length > 1 && <div className="text-secondary text-sm">{group.length} installments</div>}
                         </td>
-                        <td>{first.studentId?.fullName}<br /><span className="text-secondary text-sm">{first.studentId?.regNumber}</span></td>
-                        <td>{formatCurrency(totalDue)}</td>
-                        <td>{formatCurrency(totalBalance)}</td>
-                        <td>{new Date(nextDue).toLocaleDateString('en-GB')}</td>
-                        <td><span className={`badge badge-${groupStatus(group)}`}>{groupStatus(group)}</span></td>
+                        <td data-label="Student">{first.studentId?.fullName}<br /><span className="text-secondary text-sm">{first.studentId?.regNumber}</span></td>
+                        <td data-label="Amount Due">{formatCurrency(totalDue)}</td>
+                        <td data-label="Balance">{formatCurrency(totalBalance)}</td>
+                        <td data-label="Due Date">{new Date(nextDue).toLocaleDateString('en-GB')}</td>
+                        <td data-label="Status"><span className={`badge badge-${groupStatus(group)}`}>{groupStatus(group)}</span></td>
                         <td>
                           <button className="btn btn-outline btn-sm" onClick={() => openInvoiceGroup(group)}>
                             View
@@ -372,11 +372,11 @@ const Billing = () => {
                 <tbody>
                   {schedules.map((s) => (
                     <tr key={s._id}>
-                      <td>{s.division} / {s.class}</td>
-                      <td style={{ textTransform: 'capitalize' }}>{s.term}</td>
-                      <td>{s.session}</td>
-                      <td>{formatCurrency(s.totalAmount)}</td>
-                      <td>{new Date(s.dueDate).toLocaleDateString('en-GB')}</td>
+                      <td data-label="Division / Class">{s.division} / {s.class}</td>
+                      <td data-label="Term" style={{ textTransform: 'capitalize' }}>{s.term}</td>
+                      <td data-label="Session">{s.session}</td>
+                      <td data-label="Total">{formatCurrency(s.totalAmount)}</td>
+                      <td data-label="Due Date">{new Date(s.dueDate).toLocaleDateString('en-GB')}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                           <button className="btn btn-outline btn-sm" onClick={() => openEditSchedule(s)}>
