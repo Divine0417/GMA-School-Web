@@ -2,13 +2,17 @@ import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import SVGIcon from '../../components/icons/SVGIcon';
 
+const TERMS = ['first', 'second', 'third'];
 const emptySubject = { name: '', ca1: '', ca2: '', exam: '' };
 
-// A compact report-card entry form for teachers, used from the portal class
-// roster. It always creates a DRAFT — publishing is admin-only and enforced by
-// the backend, so there's deliberately no publish control here.
+// Report-card modal for teachers — same capabilities as the admin console
+// modal (manual score entry OR PDF upload), portal-styled and bound to the
+// student picked from the roster. Always creates a DRAFT: publishing is
+// admin-only and enforced by the backend.
 const StaffReportCardForm = ({ student, onClose, onCreated }) => {
-  const { apiCall } = useAuth();
+  const { apiCall, token, API_BASE_URL } = useAuth();
+  const [mode, setMode] = useState('manual');
+
   const [form, setForm] = useState({
     term: 'first',
     session: '2024/2025',
@@ -17,8 +21,10 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
     position: '',
     numberInClass: '',
     classTeacherComment: '',
+    principalComment: '',
     nextTermBeginsDate: ''
   });
+  const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,12 +38,11 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
   const addSubject = () => setForm((p) => ({ ...p, subjects: [...p.subjects, { ...emptySubject }] }));
   const removeSubject = (i) => setForm((p) => ({ ...p, subjects: p.subjects.filter((_, idx) => idx !== i) }));
 
-  const submit = async (e) => {
+  const submitManual = async (e) => {
     e.preventDefault();
     setError('');
     if (form.subjects.length === 0 || form.subjects.some((s) => !s.name.trim())) {
-      setError('Every subject needs a name.');
-      return;
+      return setError('Every subject needs a name.');
     }
     setSubmitting(true);
     const payload = {
@@ -60,14 +65,36 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
         numberInClass: form.numberInClass === '' ? undefined : parseInt(form.numberInClass)
       },
       classTeacherComment: form.classTeacherComment || undefined,
+      principalComment: form.principalComment || undefined,
       nextTermBeginsDate: form.nextTermBeginsDate || undefined
     };
     const { data } = await apiCall('/admin/report-cards/manual', { method: 'POST', body: JSON.stringify(payload) });
-    if (data.success) {
-      onCreated?.();
-      onClose();
-    } else {
-      setError(data.message || data.errors?.[0]?.msg || 'Failed to create report card');
+    if (data.success) { onCreated?.(); onClose(); }
+    else setError(data.message || data.errors?.[0]?.msg || 'Failed to create report card');
+    setSubmitting(false);
+  };
+
+  const submitUpload = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!file) return setError('Choose a PDF file to upload.');
+    setSubmitting(true);
+    const formData = new FormData();
+    formData.append('reportCard', file);
+    formData.append('studentId', student._id);
+    formData.append('term', form.term);
+    formData.append('session', form.session);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/report-cards`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) { onCreated?.(); onClose(); }
+      else setError(data.message || data.errors?.[0]?.msg || 'Upload failed');
+    } catch {
+      setError('Network error during upload.');
     }
     setSubmitting(false);
   };
@@ -80,83 +107,110 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
           <button className="portal-modal-close" onClick={onClose} aria-label="Close"><SVGIcon name="close" size="22" /></button>
         </div>
         <div className="portal-modal-body">
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+            <button type="button" className={`btn btn-sm ${mode === 'manual' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('manual')}>Enter Scores</button>
+            <button type="button" className={`btn btn-sm ${mode === 'upload' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('upload')}>Upload PDF Instead</button>
+          </div>
+
           {error && (
             <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
               <SVGIcon name="alert-circle" size="20" /><span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={submit}>
-            <div className="portal-form-row">
-              <div className="form-group">
-                <label className="form-label">Term</label>
-                <select className="form-input" value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value })}>
-                  <option value="first">First</option>
-                  <option value="second">Second</option>
-                  <option value="third">Third</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Session</label>
-                <input className="form-input" value={form.session} onChange={(e) => setForm({ ...form, session: e.target.value })} placeholder="2024/2025" />
-              </div>
+          <div className="portal-form-row">
+            <div className="form-group">
+              <label className="form-label">Term</label>
+              <select className="form-input" value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value })}>
+                {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
-
-            <label className="form-label" style={{ marginTop: 'var(--space-2)' }}>Subjects &amp; Scores</label>
-            <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-2)' }}>Subject · CA1 · CA2 · Exam — grades are computed automatically.</p>
-            {form.subjects.map((s, i) => (
-              <div className="rc-subject-row" key={i}>
-                <input className="form-input" placeholder="Subject" value={s.name} onChange={(e) => updateSubject(i, 'name', e.target.value)} />
-                <input className="form-input" type="number" placeholder="CA1" value={s.ca1} onChange={(e) => updateSubject(i, 'ca1', e.target.value)} />
-                <input className="form-input" type="number" placeholder="CA2" value={s.ca2} onChange={(e) => updateSubject(i, 'ca2', e.target.value)} />
-                <input className="form-input" type="number" placeholder="Exam" value={s.exam} onChange={(e) => updateSubject(i, 'exam', e.target.value)} />
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => removeSubject(i)} disabled={form.subjects.length === 1} aria-label="Remove subject">
-                  <SVGIcon name="close" size="14" />
-                </button>
-              </div>
-            ))}
-            <button type="button" className="btn btn-outline btn-sm" onClick={addSubject} style={{ marginBottom: 'var(--space-4)' }}>+ Add subject</button>
-
-            <div className="portal-form-row">
-              <div className="form-group">
-                <label className="form-label">Position (optional)</label>
-                <input className="form-input" value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="e.g. 3rd" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Number in Class (optional)</label>
-                <input className="form-input" type="number" value={form.numberInClass} onChange={(e) => setForm({ ...form, numberInClass: e.target.value })} />
-              </div>
+            <div className="form-group">
+              <label className="form-label">Session</label>
+              <input className="form-input" value={form.session} onChange={(e) => setForm({ ...form, session: e.target.value })} placeholder="2024/2025" />
             </div>
+          </div>
 
-            <div className="portal-form-row">
-              <div className="form-group">
-                <label className="form-label">Days Present</label>
-                <input className="form-input" type="number" value={form.attendance.daysPresent} onChange={(e) => setForm({ ...form, attendance: { ...form.attendance, daysPresent: e.target.value } })} />
+          {mode === 'manual' ? (
+            <form onSubmit={submitManual}>
+              <label className="form-label">Subjects &amp; Scores</label>
+              <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-2)' }}>Subject · CA1 · CA2 · Exam — grades computed automatically.</p>
+              {form.subjects.map((s, i) => {
+                const total = (parseFloat(s.ca1) || 0) + (parseFloat(s.ca2) || 0) + (parseFloat(s.exam) || 0);
+                return (
+                  <div className="rc-subject-row" key={i}>
+                    <input className="form-input" placeholder="Subject" value={s.name} onChange={(e) => updateSubject(i, 'name', e.target.value)} />
+                    <input className="form-input" type="number" min="0" placeholder="CA1" value={s.ca1} onChange={(e) => updateSubject(i, 'ca1', e.target.value)} />
+                    <input className="form-input" type="number" min="0" placeholder="CA2" value={s.ca2} onChange={(e) => updateSubject(i, 'ca2', e.target.value)} />
+                    <input className="form-input" type="number" min="0" placeholder="Exam" value={s.exam} onChange={(e) => updateSubject(i, 'exam', e.target.value)} />
+                    <span className="text-secondary text-sm" style={{ minWidth: 44, textAlign: 'right' }}>= {total}</span>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => removeSubject(i)} disabled={form.subjects.length === 1} aria-label="Remove subject"><SVGIcon name="close" size="14" /></button>
+                  </div>
+                );
+              })}
+              <button type="button" className="btn btn-outline btn-sm" onClick={addSubject} style={{ marginBottom: 'var(--space-4)' }}>+ Add subject</button>
+
+              <h4 style={{ marginBottom: 'var(--space-3)' }}>Attendance</h4>
+              <div className="portal-form-row">
+                <div className="form-group">
+                  <label className="form-label">Days Present</label>
+                  <input className="form-input" type="number" min="0" value={form.attendance.daysPresent} onChange={(e) => setForm({ ...form, attendance: { ...form.attendance, daysPresent: e.target.value } })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Days Absent</label>
+                  <input className="form-input" type="number" min="0" value={form.attendance.daysAbsent} onChange={(e) => setForm({ ...form, attendance: { ...form.attendance, daysAbsent: e.target.value } })} />
+                </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Total Days</label>
-                <input className="form-input" type="number" value={form.attendance.totalDays} onChange={(e) => setForm({ ...form, attendance: { ...form.attendance, totalDays: e.target.value } })} />
+                <input className="form-input" type="number" min="0" value={form.attendance.totalDays} onChange={(e) => setForm({ ...form, attendance: { ...form.attendance, totalDays: e.target.value } })} />
               </div>
-            </div>
 
-            <div className="form-group">
-              <label className="form-label">Class Teacher's Comment (optional)</label>
-              <textarea className="form-input" rows={2} value={form.classTeacherComment} onChange={(e) => setForm({ ...form, classTeacherComment: e.target.value })} />
-            </div>
+              <div className="portal-form-row">
+                <div className="form-group">
+                  <label className="form-label">Position in Class (optional)</label>
+                  <input className="form-input" value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="e.g. 3rd" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Number in Class (optional)</label>
+                  <input className="form-input" type="number" min="1" value={form.numberInClass} onChange={(e) => setForm({ ...form, numberInClass: e.target.value })} />
+                </div>
+              </div>
 
-            <div className="form-group">
-              <label className="form-label">Next Term Begins (optional)</label>
-              <input className="form-input" type="date" value={form.nextTermBeginsDate} onChange={(e) => setForm({ ...form, nextTermBeginsDate: e.target.value })} />
-            </div>
+              <div className="form-group">
+                <label className="form-label">Class Teacher's Comment (optional)</label>
+                <textarea className="form-input" rows={2} value={form.classTeacherComment} onChange={(e) => setForm({ ...form, classTeacherComment: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Principal's Comment (optional)</label>
+                <textarea className="form-input" rows={2} value={form.principalComment} onChange={(e) => setForm({ ...form, principalComment: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Next Term Begins (optional)</label>
+                <input className="form-input" type="date" value={form.nextTermBeginsDate} onChange={(e) => setForm({ ...form, nextTermBeginsDate: e.target.value })} />
+              </div>
 
-            <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
-              This saves as a draft. An administrator will publish it before parents/students can see it.
-            </p>
-
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? <><SVGIcon name="loader" size="18" className="spinning" /> Saving…</> : 'Save Draft Report Card'}
-            </button>
-          </form>
+              <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
+                This saves as a draft. An administrator will publish it before parents/students can see it.
+              </p>
+              <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
+                {submitting ? <><SVGIcon name="loader" size="18" className="spinning" /> Saving…</> : 'Save Draft Report Card'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={submitUpload}>
+              <div className="form-group">
+                <label className="form-label">Report Card PDF</label>
+                <input className="form-input" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              </div>
+              <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
+                The uploaded report card saves as a draft. An administrator will publish it before parents/students can see it.
+              </p>
+              <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
+                {submitting ? <><SVGIcon name="loader" size="18" className="spinning" /> Uploading…</> : 'Upload Draft Report Card'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
