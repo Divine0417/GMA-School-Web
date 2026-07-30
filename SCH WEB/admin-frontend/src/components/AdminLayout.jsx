@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { to: '/notices', label: 'Notices', icon: 'bell' },
   { to: '/resources', label: 'Resources', icon: 'bookOpen' },
   { to: '/exams', label: 'CBT Exams', icon: 'clipboard' },
-  { to: '/billing', label: 'Billing', icon: 'creditCard' },
+  { to: '/billing', label: 'Billing', icon: 'creditCard', financeOnly: true },
   { to: '/report-cards', label: 'Report Cards', icon: 'fileText' },
   { to: '/settings', label: 'Settings', icon: 'settings' }
 ];
@@ -27,7 +27,14 @@ const AdminLayout = () => {
   // Staff management (viewing accounts, and especially creating new
   // admin/staff logins) is an admin-only capability on the backend — hide
   // the nav entry for staff so it's not a dead link that 403s on click.
-  const visibleNavItems = NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin');
+  // Billing is limited to admins and bursars — teaching staff have no
+  // finance responsibilities.
+  const isFinanceUser = user?.role === 'admin' || user?.staffType === 'bursar';
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly && user?.role !== 'admin') return false;
+    if (item.financeOnly && !isFinanceUser) return false;
+    return true;
+  });
 
   const handleLogout = () => {
     logout();
@@ -66,7 +73,7 @@ const AdminLayout = () => {
           </button>
           <div className="admin-topbar-spacer" />
           <div className="admin-user">
-            <span className="admin-user-identifier">{user?.email || user?.phone}</span>
+            <span className="admin-user-identifier">{user?.name || user?.email || user?.phone}</span>
             <span className="admin-user-role">{user?.role}</span>
           </div>
           <button className="btn btn-outline btn-sm" onClick={handleLogout}>

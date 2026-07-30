@@ -3,8 +3,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSelectedChild } from '../../contexts/SelectedChildContext';
 import { Link } from 'react-router-dom';
 import SVGIcon from '../../components/icons/SVGIcon';
+import StaffClassOverview from './StaffClassOverview';
 
-const Dashboard = () => {
+const StudentParentDashboard = () => {
   const { user, apiCall } = useAuth();
   const { selectedChildId } = useSelectedChild();
   const [dashboardData, setDashboardData] = useState(null);
@@ -263,6 +264,13 @@ const Dashboard = () => {
       </div>
     </div>
   );
+};
+
+// Staff/admin land on a class overview (roster + summary); students and
+// parents keep the single-student dashboard below.
+const Dashboard = () => {
+  const { isStaffOrAdmin } = useSelectedChild();
+  return isStaffOrAdmin ? <StaffClassOverview /> : <StudentParentDashboard />;
 };
 
 export default Dashboard;

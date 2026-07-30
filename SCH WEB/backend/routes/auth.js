@@ -11,6 +11,7 @@ import {
 } from '../middleware/auth.js';
 import { sendPasswordResetEmail } from '../utils/email.js';
 import { sendPasswordResetSMS, sendCredentialsSMS } from '../utils/sms.js';
+import { uploadAvatar } from '../middleware/upload.js';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -75,13 +76,30 @@ router.post('/login', rateLimitLogin, [
     // Generate JWT token
     const token = generateToken(user._id, user.role);
 
+    // Record this sign-in for the account-activity list (keep the last 10,
+    // most-recent first). The pre-save hook only re-hashes when the password
+    // field changes, so saving here is safe.
+    const loginAt = new Date();
+    user.lastLogin = loginAt;
+    user.loginHistory = [
+      { at: loginAt, ip: req.ip, userAgent: req.headers['user-agent'] },
+      ...(user.loginHistory || [])
+    ].slice(0, 10);
+    await user.save();
+
     // Get additional user info based on role
     let userData = {
       id: user._id,
+      name: user.name,
       email: user.email,
       phone: user.phone,
       role: user.role,
       division: user.division,
+      classes: user.classes,
+      staffType: user.staffType,
+      avatarUrl: user.avatarUrl,
+      notificationPrefs: user.notificationPrefs,
+      loginHistory: user.loginHistory,
       lastLogin: user.lastLogin
     };
 
@@ -131,12 +149,14 @@ router.post('/login', rateLimitLogin, [
 
 // Admin register endpoint (for admin to create users, e.g. staff/teacher accounts)
 router.post('/admin/register', authenticateToken, authorizeRoles('admin'), [
+  body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
   body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
   body('phone').optional({ checkFalsy: true }).isString().withMessage('Please provide a valid phone number'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('role').isIn(['student', 'parent', 'staff', 'admin']).withMessage('Invalid role'),
   body('division').optional().isIn(['nursery', 'primary', 'secondary', 'college']).withMessage('Invalid division'),
-  body('classes').optional().isArray().withMessage('Classes must be a list')
+  body('classes').optional().isArray().withMessage('Classes must be a list'),
+  body('staffType').optional({ checkFalsy: true }).isIn(['class_teacher', 'subject_teacher', 'bursar']).withMessage('Invalid staff type')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -147,7 +167,7 @@ router.post('/admin/register', authenticateToken, authorizeRoles('admin'), [
       });
     }
 
-    const { email, phone, password, role, division, classes } = req.body;
+    const { name, email, phone, password, role, division, classes, staffType } = req.body;
 
     if (!email && !phone) {
       return res.status(400).json({
@@ -178,12 +198,14 @@ router.post('/admin/register', authenticateToken, authorizeRoles('admin'), [
 
     // Create user
     const userData = {
+      name: name?.trim() || undefined,
       email: email || undefined,
       phone: phone || undefined,
       passwordHash: password, // Will be hashed by the model
       role,
       division: (role === 'student' || role === 'parent' || role === 'staff') ? division : undefined,
-      classes: cleanClasses
+      classes: cleanClasses,
+      staffType: role === 'staff' ? (staffType || undefined) : undefined
     };
 
     const user = await User.createUser(userData);
@@ -197,11 +219,13 @@ router.post('/admin/register', authenticateToken, authorizeRoles('admin'), [
       message: 'User created successfully',
       user: {
         id: user._id,
+        name: user.name,
         email: user.email,
         phone: user.phone,
         role: user.role,
         division: user.division,
-        classes: user.classes
+        classes: user.classes,
+        staffType: user.staffType
       }
     });
 
@@ -267,16 +291,112 @@ router.post('/change-password', authenticateToken, [
   }
 });
 
+// Update the signed-in user's own profile — contact details + notification
+// preferences. (Name is only editable for staff/admin; students/parents are
+// named on their student record and managed by an admin.)
+router.patch('/profile', authenticateToken, [
+  body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
+  body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
+  body('phone').optional({ checkFalsy: true }).isString().withMessage('Please provide a valid phone number'),
+  body('notificationPrefs').optional().isObject().withMessage('Invalid notification preferences')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { name, email, phone, notificationPrefs } = req.body;
+    const isStaffAdmin = ['staff', 'admin'].includes(req.user.role);
+
+    const setOps = {};
+    const unsetOps = {};
+
+    if (name !== undefined && isStaffAdmin) {
+      if (name.trim()) setOps.name = name.trim(); else unsetOps.name = '';
+    }
+    if (email !== undefined) {
+      if (email) setOps.email = email.toLowerCase().trim(); else unsetOps.email = '';
+    }
+    if (phone !== undefined) {
+      if (phone) setOps.phone = phone.trim(); else unsetOps.phone = '';
+    }
+
+    // The account must keep at least one way to sign in / be contacted.
+    const finalEmail = 'email' in setOps ? setOps.email : ('email' in unsetOps ? undefined : req.user.email);
+    const finalPhone = 'phone' in setOps ? setOps.phone : ('phone' in unsetOps ? undefined : req.user.phone);
+    if (!finalEmail && !finalPhone) {
+      return res.status(400).json({ success: false, message: 'At least one of email or phone is required' });
+    }
+
+    if (notificationPrefs && typeof notificationPrefs === 'object') {
+      ['emailNotices', 'smsNotices', 'emailBills', 'smsBills'].forEach((key) => {
+        if (typeof notificationPrefs[key] === 'boolean') setOps[`notificationPrefs.${key}`] = notificationPrefs[key];
+      });
+    }
+
+    const update = {};
+    if (Object.keys(setOps).length) update.$set = setOps;
+    if (Object.keys(unsetOps).length) update.$unset = unsetOps;
+
+    const user = await User.findByIdAndUpdate(req.user._id, update, { new: true, runValidators: true }).select('-passwordHash');
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        notificationPrefs: user.notificationPrefs
+      }
+    });
+
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'That email or phone is already in use by another account' });
+    }
+    console.error('Profile update error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while updating your profile' });
+  }
+});
+
+// Upload/replace the signed-in user's profile photo
+router.post('/profile/avatar', authenticateToken, uploadAvatar, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'An image file is required' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { avatarUrl: req.file.path } },
+      { new: true }
+    ).select('-passwordHash');
+
+    res.json({ success: true, message: 'Profile photo updated', avatarUrl: user.avatarUrl });
+
+  } catch (error) {
+    console.error('Avatar upload error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while updating your photo' });
+  }
+});
+
 // Get current user profile
 router.get('/profile', authenticateToken, async (req, res) => {
   try {
     const user = req.user;
     let userData = {
       id: user._id,
+      name: user.name,
       email: user.email,
       phone: user.phone,
       role: user.role,
       division: user.division,
+      classes: user.classes,
+      staffType: user.staffType,
+      avatarUrl: user.avatarUrl,
+      notificationPrefs: user.notificationPrefs,
+      loginHistory: user.loginHistory,
       lastLogin: user.lastLogin,
       isActive: user.isActive
     };
@@ -353,9 +473,12 @@ router.get('/verify', authenticateToken, (req, res) => {
     message: 'Token is valid',
     user: {
       id: req.user._id,
+      name: req.user.name,
       email: req.user.email,
       role: req.user.role,
-      division: req.user.division
+      division: req.user.division,
+      classes: req.user.classes,
+      staffType: req.user.staffType
     }
   });
 });

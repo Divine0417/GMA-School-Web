@@ -5,7 +5,14 @@ import PasswordField from '../components/PasswordField';
 
 const DIVISIONS = ['nursery', 'primary', 'secondary', 'college'];
 
-const emptyForm = { email: '', phone: '', password: '', role: 'staff', division: '', classesText: '' };
+const STAFF_TYPES = [
+  { value: 'class_teacher', label: 'Class Teacher' },
+  { value: 'subject_teacher', label: 'Subject Teacher' },
+  { value: 'bursar', label: 'Bursar' }
+];
+const staffTypeLabel = (value) => STAFF_TYPES.find((t) => t.value === value)?.label || '';
+
+const emptyForm = { name: '', email: '', phone: '', password: '', role: 'staff', division: '', classesText: '', staffType: '' };
 
 const toClassList = (text) => text.split(',').map((c) => c.trim()).filter(Boolean);
 
@@ -70,10 +77,12 @@ const Staff = () => {
     const { classesText, ...rest } = form;
     const payload = {
       ...rest,
+      name: form.name.trim() || undefined,
       email: form.email || undefined,
       phone: form.phone || undefined,
       division: form.division || undefined,
-      classes: form.role === 'staff' ? toClassList(classesText) : undefined
+      classes: form.role === 'staff' ? toClassList(classesText) : undefined,
+      staffType: form.role === 'staff' ? (form.staffType || undefined) : undefined
     };
     const { data } = await apiCall('/auth/admin/register', {
       method: 'POST',
@@ -93,11 +102,13 @@ const Staff = () => {
   const openEditForm = (member) => {
     setEditingStaff(member);
     setEditForm({
+      name: member.name || '',
       email: member.email || '',
       phone: member.phone || '',
       role: member.role,
       division: member.division || '',
-      classesText: (member.classes || []).join(', ')
+      classesText: (member.classes || []).join(', '),
+      staffType: member.staffType || ''
     });
     setEditError('');
     fetchKnownClasses(member.division);
@@ -111,10 +122,12 @@ const Staff = () => {
     const { classesText, ...rest } = editForm;
     const payload = {
       ...rest,
+      name: editForm.name.trim() || undefined,
       email: editForm.email || undefined,
       phone: editForm.phone || undefined,
       division: editForm.division || undefined,
-      classes: editForm.role === 'staff' ? toClassList(classesText) : undefined
+      classes: editForm.role === 'staff' ? toClassList(classesText) : undefined,
+      staffType: editForm.role === 'staff' ? (editForm.staffType || undefined) : undefined
     };
 
     const { data } = await apiCall(`/admin/staff/${editingStaff._id}`, {
@@ -162,6 +175,7 @@ const Staff = () => {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Name</th>
                 <th>Email</th>
                 <th>Phone</th>
                 <th>Role</th>
@@ -174,9 +188,13 @@ const Staff = () => {
             <tbody>
               {staff.map((s) => (
                 <tr key={s._id}>
+                  <td data-label="Name">{s.name || '—'}</td>
                   <td data-label="Email">{s.email || '—'}</td>
                   <td data-label="Phone">{s.phone || '—'}</td>
-                  <td data-label="Role" style={{ textTransform: 'capitalize' }}>{s.role}</td>
+                  <td data-label="Role" style={{ textTransform: 'capitalize' }}>
+                    {s.role}
+                    {s.staffType && <><br /><span className="text-secondary text-sm">{staffTypeLabel(s.staffType)}</span></>}
+                  </td>
                   <td data-label="Scope">
                     {s.role !== 'staff' || !s.division ? (
                       <span className="text-secondary text-sm">Unrestricted</span>
@@ -230,12 +248,27 @@ const Staff = () => {
               )}
 
               <div className="form-group">
+                <label>Full Name</label>
+                <input type="text" placeholder="e.g. Mrs. Ada Okoro" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+
+              <div className="form-group">
                 <label>Role</label>
                 <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                   <option value="staff">Staff</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
+
+              {form.role === 'staff' && (
+                <div className="form-group">
+                  <label>Staff Position</label>
+                  <select value={form.staffType} onChange={(e) => setForm({ ...form, staffType: e.target.value })}>
+                    <option value="">Select position…</option>
+                    {STAFF_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div className="form-row">
                 <div className="form-group">
@@ -319,12 +352,27 @@ const Staff = () => {
               )}
 
               <div className="form-group">
+                <label>Full Name</label>
+                <input type="text" placeholder="e.g. Mrs. Ada Okoro" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+              </div>
+
+              <div className="form-group">
                 <label>Role</label>
                 <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
                   <option value="staff">Staff</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
+
+              {editForm.role === 'staff' && (
+                <div className="form-group">
+                  <label>Staff Position</label>
+                  <select value={editForm.staffType} onChange={(e) => setEditForm({ ...editForm, staffType: e.target.value })}>
+                    <option value="">Select position…</option>
+                    {STAFF_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div className="form-row">
                 <div className="form-group">

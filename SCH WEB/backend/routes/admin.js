@@ -17,7 +17,8 @@ import Submission from '../models/Submission.js';
 import {
   authenticateToken,
   authorizeRoles,
-  authorizeDivisionAccess
+  authorizeDivisionAccess,
+  authorizeFinance
 } from '../middleware/auth.js';
 import { sendCredentialsEmail, sendAdmissionDecision } from '../utils/email.js';
 import { sendCredentialsSMS, sendAdmissionDecisionSMS } from '../utils/sms.js';
@@ -510,6 +511,9 @@ router.post('/report-cards', authenticateToken, authorizeRoles('admin', 'staff')
       fileUrl: req.file.path,
       fileName: req.file.originalname,
       fileSize: req.file.size,
+      // Uploaded cards normally publish on creation, but only an admin may
+      // release results — a staff upload stays a draft until an admin publishes.
+      isPublished: req.user.role === 'admin',
       uploadedBy: req.userId,
       division: student.division,
       class: student.class
@@ -625,6 +629,11 @@ router.patch('/report-cards/manual/:reportCardId', authenticateToken, authorizeR
     if (!isWithinScope(req.user, existing.division, existing.class)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned classes' });
     }
+    // Once a report card is published only an administrator may change it —
+    // staff edits are locked so released results can't be quietly altered.
+    if (existing.isPublished && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'This report card has been published — only an administrator can edit it.' });
+    }
 
     existing.subjects = req.body.subjects;
     existing.attendance = req.body.attendance;
@@ -651,8 +660,10 @@ router.patch('/report-cards/manual/:reportCardId', authenticateToken, authorizeR
   }
 });
 
-// Publish/unpublish a report card (a parent/student never sees a draft)
-router.patch('/report-cards/:reportCardId/publish', authenticateToken, authorizeRoles('admin', 'staff'), [
+// Publish/unpublish a report card (a parent/student never sees a draft).
+// Publishing is an administrator-only action — staff prepare report cards but
+// only a main admin releases them to parents/students.
+router.patch('/report-cards/:reportCardId/publish', authenticateToken, authorizeRoles('admin'), [
   body('isPublished').isBoolean().withMessage('isPublished must be true or false')
 ], async (req, res) => {
   try {
@@ -693,6 +704,10 @@ router.delete('/report-cards/:reportCardId', authenticateToken, authorizeRoles('
     if (!isWithinScope(req.user, existing.division, existing.class)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned classes' });
     }
+    // A published report card can only be removed by an administrator.
+    if (existing.isPublished && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'This report card has been published — only an administrator can delete it.' });
+    }
 
     await ReportCard.findByIdAndUpdate(req.params.reportCardId, { isActive: false });
 
@@ -710,7 +725,7 @@ router.delete('/report-cards/:reportCardId', authenticateToken, authorizeRoles('
 // ===== FEE SCHEDULE MANAGEMENT =====
 
 // Create fee schedule
-router.post('/fee-schedules', authenticateToken, authorizeRoles('admin', 'staff'), [
+router.post('/fee-schedules', authenticateToken, authorizeFinance, [
   body('division').isIn(['nursery', 'primary', 'secondary', 'college']).withMessage('Invalid division'),
   body('class').trim().notEmpty().withMessage('Class is required'),
   body('term').isIn(['first', 'second', 'third']).withMessage('Invalid term'),
@@ -758,7 +773,7 @@ router.post('/fee-schedules', authenticateToken, authorizeRoles('admin', 'staff'
 });
 
 // Update fee schedule
-router.patch('/fee-schedules/:feeScheduleId', authenticateToken, authorizeRoles('admin', 'staff'), [
+router.patch('/fee-schedules/:feeScheduleId', authenticateToken, authorizeFinance, [
   body('division').optional().isIn(['nursery', 'primary', 'secondary', 'college']).withMessage('Invalid division'),
   body('class').optional().trim().notEmpty().withMessage('Class is required'),
   body('term').optional().isIn(['first', 'second', 'third']).withMessage('Invalid term'),
@@ -811,7 +826,7 @@ router.patch('/fee-schedules/:feeScheduleId', authenticateToken, authorizeRoles(
 });
 
 // Generate invoices from fee schedule
-router.post('/fee-schedules/:feeScheduleId/generate-invoices', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+router.post('/fee-schedules/:feeScheduleId/generate-invoices', authenticateToken, authorizeFinance, async (req, res) => {
   try {
     const { feeScheduleId } = req.params;
 
@@ -958,7 +973,7 @@ router.post('/fee-schedules/:feeScheduleId/generate-invoices', authenticateToken
 });
 
 // Get all fee schedules
-router.get('/fee-schedules', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+router.get('/fee-schedules', authenticateToken, authorizeFinance, async (req, res) => {
   try {
     const { division, session, term, page = 1, limit = 20 } = req.query;
 
@@ -997,7 +1012,7 @@ router.get('/fee-schedules', authenticateToken, authorizeRoles('admin', 'staff')
 });
 
 // Get all invoices
-router.get('/invoices', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+router.get('/invoices', authenticateToken, authorizeFinance, async (req, res) => {
   try {
     const { status, division, session, studentId, page = 1, limit = 20 } = req.query;
 
@@ -1046,7 +1061,7 @@ router.get('/invoices', authenticateToken, authorizeRoles('admin', 'staff'), asy
 });
 
 // Manually record a payment against an invoice (cash, bank transfer, etc. — Paystack payments are recorded automatically via the payment routes)
-router.post('/invoices/:invoiceId/payments', authenticateToken, authorizeRoles('admin', 'staff'), [
+router.post('/invoices/:invoiceId/payments', authenticateToken, authorizeFinance, [
   body('amount').isFloat({ min: 0.01 }).withMessage('A valid payment amount is required'),
   body('paymentMethod').isIn(['cash', 'bank_transfer', 'card', 'other']).withMessage('Invalid payment method'),
   body('notes').optional().trim()
@@ -1083,7 +1098,7 @@ router.post('/invoices/:invoiceId/payments', authenticateToken, authorizeRoles('
 });
 
 // Apply a discount to an invoice
-router.patch('/invoices/:invoiceId/discount', authenticateToken, authorizeRoles('admin', 'staff'), [
+router.patch('/invoices/:invoiceId/discount', authenticateToken, authorizeFinance, [
   body('amount').isFloat({ min: 0 }).withMessage('A valid discount amount is required'),
   body('reason').trim().notEmpty().withMessage('A reason is required')
 ], async (req, res) => {
@@ -1695,10 +1710,12 @@ router.patch('/staff/:userId/status', authenticateToken, authorizeRoles('admin')
 
 // Update a staff/admin account's details (email, phone, role, division)
 router.patch('/staff/:userId', authenticateToken, authorizeRoles('admin'), [
+  body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
   body('role').optional().isIn(['staff', 'admin']).withMessage('Role must be staff or admin'),
   body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
   body('division').optional({ checkFalsy: true }).isIn(['nursery', 'primary', 'secondary', 'college']).withMessage('Invalid division'),
-  body('classes').optional().isArray().withMessage('Classes must be a list')
+  body('classes').optional().isArray().withMessage('Classes must be a list'),
+  body('staffType').optional({ checkFalsy: true }).isIn(['class_teacher', 'subject_teacher', 'bursar']).withMessage('Invalid staff type')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -1706,7 +1723,7 @@ router.patch('/staff/:userId', authenticateToken, authorizeRoles('admin'), [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { email, phone, role, division, classes } = req.body;
+    const { name, email, phone, role, division, classes, staffType } = req.body;
 
     if (!email && !phone) {
       return res.status(400).json({ success: false, message: 'At least one of email or phone is required' });
@@ -1719,11 +1736,15 @@ router.patch('/staff/:userId', authenticateToken, authorizeRoles('admin'), [
 
     const setOps = {};
     const unsetOps = {};
+    if (name) setOps.name = name.trim(); else unsetOps.name = '';
     if (email) setOps.email = email; else unsetOps.email = '';
     if (phone) setOps.phone = phone; else unsetOps.phone = '';
     if (role) setOps.role = role;
     if (division) setOps.division = division; else unsetOps.division = '';
     if (cleanClasses.length > 0) setOps.classes = cleanClasses; else unsetOps.classes = '';
+    // staffType only applies to staff; clear it if the account is an admin
+    // or no type was supplied.
+    if (role !== 'admin' && staffType) setOps.staffType = staffType; else unsetOps.staffType = '';
 
     const update = {};
     if (Object.keys(setOps).length) update.$set = setOps;
@@ -2280,6 +2301,11 @@ router.patch('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff
     if (denyIfOutOfExamScope(req, exam)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
     }
+    // Once an exam is published only an admin may change it — staff can't edit
+    // a live exam students may already be sitting.
+    if (exam.isPublished && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'This exam is published — only an administrator can edit it.' });
+    }
 
     const editable = ['title', 'description', 'subject', 'classes', 'durationMinutes', 'startTime', 'endTime', 'questions', 'shuffleQuestions', 'showResultsImmediately'];
     editable.forEach((field) => {
@@ -2295,7 +2321,9 @@ router.patch('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff
   }
 });
 
-router.patch('/exams/:examId/publish', authenticateToken, authorizeRoles('admin', 'staff'), [
+// Publishing an exam (releasing it to students) is an administrator-only
+// action — teaching staff build exams as drafts, an admin makes them live.
+router.patch('/exams/:examId/publish', authenticateToken, authorizeRoles('admin'), [
   body('isPublished').isBoolean().withMessage('isPublished must be a boolean')
 ], async (req, res) => {
   try {
@@ -2334,6 +2362,9 @@ router.delete('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staf
     }
     if (denyIfOutOfExamScope(req, exam)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+    if (exam.isPublished && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'This exam is published — only an administrator can delete it.' });
     }
 
     exam.isActive = false;

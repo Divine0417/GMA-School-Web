@@ -108,6 +108,24 @@ export const authorizeRoles = (...roles) => {
   };
 };
 
+// Finance access (fee schedules, invoices, payments recording) is limited to
+// administrators and the bursar — teaching staff (class/subject teachers) have
+// no billing responsibilities. Must run after authenticateToken.
+export const authorizeFinance = (req, res, next) => {
+  const user = req.user;
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const isFinance = user.role === 'admin' || (user.role === 'staff' && user.staffType === 'bursar');
+  if (!isFinance) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied — billing is limited to administrators and the bursar.'
+    });
+  }
+  next();
+};
+
 // Check if user is student or parent of the student
 export const authorizeStudentAccess = async (req, res, next) => {
   try {

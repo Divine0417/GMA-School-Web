@@ -210,7 +210,11 @@
   align-items: center;
 }
 
-.login-page .input-with-icon svg {
+/* Only the leading icon (SVGIcon renders a `.svg-icon` span as a direct
+   child) should be pinned to the left. Scoping to the direct-child span
+   avoids matching the eye icon inside the password toggle button, which
+   otherwise got shoved onto the input's right border. */
+.login-page .input-with-icon > .svg-icon {
   position: absolute;
   left: var(--space-4);
   top: 50%;
@@ -222,7 +226,7 @@
 
 .login-page .input-with-icon input {
   width: 100%;
-  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-12);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-10);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
   font-size: var(--text-base);
@@ -1307,3 +1311,320 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ============================================================
+   Staff / class-teacher class overview (portal landing)
+   ============================================================ */
+.class-overview { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.co-hero {
+  position: relative;
+  overflow: hidden;
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-navy-dark) 100%);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+}
+
+.co-hero::after {
+  content: '';
+  position: absolute;
+  top: -80px;
+  right: -60px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(201, 168, 76, 0.30), transparent 70%);
+  pointer-events: none;
+}
+
+.co-hero-main { position: relative; z-index: 1; }
+
+.co-hero-title {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: #fff;
+  margin: 0 0 var(--space-1);
+}
+
+.co-hero-sub { color: rgba(255, 255, 255, 0.78); font-size: var(--text-sm); margin: 0; }
+
+.co-hero-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-4);
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(201, 168, 76, 0.18);
+  border: 1px solid rgba(201, 168, 76, 0.35);
+  color: var(--color-gold-light);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  text-transform: capitalize;
+}
+
+/* --- summary stats --- */
+.co-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-4);
+}
+
+.co-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.co-stat-value {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--color-navy);
+  line-height: 1;
+}
+
+.co-stat-label { font-size: var(--text-sm); color: var(--color-text-secondary); }
+
+/* --- roster --- */
+.co-roster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.co-roster-head h2 { font-size: var(--text-2xl); color: var(--color-navy); margin: 0; }
+
+.co-search input {
+  min-width: 240px;
+  padding: 10px 14px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  background: #fff;
+  color: var(--color-navy);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.co-search input:focus {
+  outline: none;
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(10, 31, 68, 0.1);
+}
+
+.co-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.co-student {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4);
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.co-student:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-navy-light);
+}
+
+.co-student-avatar {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-navy);
+  color: var(--color-gold-light);
+  font-weight: var(--font-bold);
+  font-size: var(--text-sm);
+}
+
+.co-student-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.co-student-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+
+.co-student-name {
+  font-weight: var(--font-semibold);
+  color: var(--color-navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.co-student-meta { font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+.co-student-arrow { color: var(--color-text-muted); flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .co-search, .co-search input { width: 100%; min-width: 0; }
+}
+
+/* ============================================================
+   Profile page — avatar, preference toggles, activity list
+   ============================================================ */
+.profile-avatar-wrap { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; }
+
+.profile-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-navy);
+  color: var(--color-gold-light);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+}
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.pref-row:last-child { border-bottom: none; }
+
+/* Toggle switch */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: var(--color-border);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+.switch-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+.switch input:checked + .switch-slider { background: var(--color-navy); }
+.switch input:checked + .switch-slider::before { transform: translateX(20px); }
+.switch input:disabled + .switch-slider { opacity: 0.6; cursor: default; }
+
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-item svg { color: var(--color-text-muted); flex-shrink: 0; margin-top: 2px; }
+
+/* ============================================================
+   Portal modals (staff create-exam / create-report forms)
+   ============================================================ */
+.portal-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 20, 38, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  z-index: 1000;
+  overflow-y: auto;
+}
+.portal-modal {
+  background: #fff;
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 640px;
+  box-shadow: var(--shadow-2xl);
+  margin: auto;
+}
+.portal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.portal-modal-header h2 { margin: 0; font-size: var(--text-xl); color: var(--color-navy); }
+.portal-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  display: flex;
+  padding: var(--space-1);
+}
+.portal-modal-body { padding: var(--space-5); }
+
+.portal-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+@media (max-width: 560px) {
+  .portal-form-row { grid-template-columns: 1fr; }
+}
+
+/* Subject score rows in the report-card form */
+.rc-subject-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.rc-subject-row input { width: 100%; }
+@media (max-width: 560px) {
+  .rc-subject-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* Roster card split: main (navigate) + report action */
+.co-student-open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.co-student-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }

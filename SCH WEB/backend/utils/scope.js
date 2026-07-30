@@ -6,9 +6,15 @@
 export function getStaffScope(user) {
   if (!user || user.role === 'admin') return null;
   if (!user.division) return null;
+  // Subject teachers work across the whole division, so their class
+  // assignment (if any) never narrows their scope — they see every student
+  // in the division. Class teachers stay pinned to their assigned classes.
+  const classes = user.staffType === 'subject_teacher'
+    ? null
+    : (Array.isArray(user.classes) && user.classes.length > 0 ? user.classes : null);
   return {
     division: user.division,
-    classes: Array.isArray(user.classes) && user.classes.length > 0 ? user.classes : null
+    classes
   };
 }
 

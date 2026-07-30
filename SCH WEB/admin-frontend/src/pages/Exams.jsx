@@ -34,7 +34,8 @@ const emptyForm = () => ({
 const toLocalInput = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
 
 const Exams = () => {
-  const { apiCall, token } = useAuth();
+  const { apiCall, token, user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { confirmDialog, alertDialog } = useDialog();
 
   const [exams, setExams] = useState([]);
@@ -436,12 +437,20 @@ const Exams = () => {
                   </td>
                   <td data-label="Status"><span className={`badge badge-${exam.isPublished ? 'approved' : 'pending'}`}>{exam.isPublished ? 'Published' : 'Draft'}</span></td>
                   <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    <button className="btn btn-outline btn-sm" onClick={() => openEditForm(exam._id)}>Edit</button>
-                    <button className="btn btn-outline btn-sm" onClick={() => togglePublish(exam._id, exam.isPublished)}>
-                      {exam.isPublished ? 'Unpublish' : 'Publish'}
-                    </button>
+                    {/* Once published, only an admin may edit/delete a live exam */}
+                    {(isAdmin || !exam.isPublished) && (
+                      <button className="btn btn-outline btn-sm" onClick={() => openEditForm(exam._id)}>Edit</button>
+                    )}
+                    {/* Publishing/unpublishing is an admin-only action */}
+                    {isAdmin && (
+                      <button className="btn btn-outline btn-sm" onClick={() => togglePublish(exam._id, exam.isPublished)}>
+                        {exam.isPublished ? 'Unpublish' : 'Publish'}
+                      </button>
+                    )}
                     <button className="btn btn-outline btn-sm" onClick={() => openSubmissions(exam)}>Submissions</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => deleteExam(exam._id)}>Delete</button>
+                    {(isAdmin || !exam.isPublished) && (
+                      <button className="btn btn-danger btn-sm" onClick={() => deleteExam(exam._id)}>Delete</button>
+                    )}
                   </td>
                 </tr>
               ))}

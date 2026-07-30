@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema({
+  // Display name for staff/admin accounts (students/parents are named on their
+  // own records). Shown in the navbar and staff list.
+  name: {
+    type: String,
+    trim: true
+  },
   email: {
     type: String,
     unique: true,
@@ -36,6 +42,35 @@ const userSchema = new mongoose.Schema({
   // means "all classes in the assigned division".
   classes: {
     type: [String],
+    default: []
+  },
+  // A staff member's job function. Only meaningful when role === 'staff'.
+  staffType: {
+    type: String,
+    enum: ['class_teacher', 'subject_teacher', 'bursar'],
+    default: undefined
+  },
+  // Profile picture (Cloudinary URL). Students have their photo on the Student
+  // record; this covers staff/admin/parent accounts.
+  avatarUrl: {
+    type: String,
+    trim: true
+  },
+  // How the account wants to be notified. Enforcement lives in the send paths;
+  // these are the user's stored preferences.
+  notificationPrefs: {
+    emailNotices: { type: Boolean, default: true },
+    smsNotices: { type: Boolean, default: false },
+    emailBills: { type: Boolean, default: true },
+    smsBills: { type: Boolean, default: false }
+  },
+  // Recent sign-ins (most-recent first, capped) for the account-activity view.
+  loginHistory: {
+    type: [{
+      at: { type: Date, default: Date.now },
+      ip: String,
+      userAgent: String
+    }],
     default: []
   },
   isActive: {

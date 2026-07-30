@@ -22,59 +22,6 @@ const ChildSwitcher = () => {
   );
 };
 
-// Staff/admin have no student/children of their own — this lets them search
-// their division/class scope (the backend already restricts results to it)
-// and pick a student to view, which is what every other portal page needs
-// in order to work for a staff account at all.
-const StaffStudentPicker = () => {
-  const { selectedStudentLabel, studentResults, isSearchingStudents, searchStudents, selectStudent } = useSelectedChild();
-  const [query, setQuery] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleChange = (e) => {
-    const value = e.target.value;
-    setQuery(value);
-    setIsOpen(true);
-    searchStudents(value);
-  };
-
-  return (
-    <div className="staff-student-picker">
-      <input
-        type="text"
-        className="staff-student-picker-input"
-        placeholder={selectedStudentLabel || 'Search a student...'}
-        value={query}
-        onChange={handleChange}
-        onFocus={() => { setIsOpen(true); searchStudents(query); }}
-        onBlur={() => setTimeout(() => setIsOpen(false), 150)}
-        aria-label="Search and select a student"
-      />
-      {isOpen && (
-        <div className="staff-student-picker-results">
-          {isSearchingStudents ? (
-            <div className="staff-student-picker-item staff-student-picker-empty">Searching...</div>
-          ) : studentResults.length === 0 ? (
-            <div className="staff-student-picker-item staff-student-picker-empty">No students found</div>
-          ) : (
-            studentResults.map((s) => (
-              <button
-                type="button"
-                key={s._id}
-                className="staff-student-picker-item"
-                onMouseDown={() => { selectStudent(s); setQuery(''); setIsOpen(false); }}
-              >
-                <strong>{s.fullName}</strong>
-                <span className="text-secondary text-sm"> — {s.regNumber} ({s.division}/{s.class})</span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const PortalLayout = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -127,9 +74,15 @@ const PortalLayout = () => {
       icon: 'bookOpen',
       label: 'Learning Resources'
     }
-  // Bills & Payments is a parent/staff/admin concern — students don't
-  // manage fees for their own account
-  ].filter((item) => item.path !== '/portal/bills' || user?.role !== 'student');
+  // Bills & Payments is for parents, admins and bursars only — students don't
+  // manage their own fees, and teaching staff (class/subject teachers) have no
+  // finance responsibilities.
+  ].filter((item) => {
+    if (item.path !== '/portal/bills') return true;
+    if (user?.role === 'student') return false;
+    if (user?.role === 'staff' && user?.staffType !== 'bursar') return false;
+    return true;
+  });
 
   const isActive = (item) => {
     if (item.exact) {
@@ -159,11 +112,10 @@ const PortalLayout = () => {
 
         <div className="header-right">
           {user?.role === 'parent' && <ChildSwitcher />}
-          {(user?.role === 'staff' || user?.role === 'admin') && <StaffStudentPicker />}
           <div className="user-menu">
             <div className="user-info">
               <span className="user-name">
-                {user?.student?.fullName || user?.email || user?.phone}
+                {user?.student?.fullName || user?.name || user?.email || user?.phone}
               </span>
               <span className="user-role">
                 {user?.role === 'student' ? 'Student' :
@@ -173,8 +125,8 @@ const PortalLayout = () => {
             </div>
 
             <div className="user-avatar">
-              {user?.student?.photoUrl ? (
-                <img src={user.student.photoUrl} alt="Profile" />
+              {(user?.student?.photoUrl || user?.avatarUrl) ? (
+                <img src={user.student?.photoUrl || user.avatarUrl} alt="Profile" />
               ) : (
                 <SVGIcon name="user" size="24" />
               )}

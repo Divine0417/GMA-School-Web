@@ -51,6 +51,17 @@ const studentPhotoUpload = multer({
   limits: { fileSize: MAX_FILE_SIZE }
 }).single('photo');
 
+// Profile avatar for staff/admin/parent accounts — images only, no PDF.
+const avatarFileFilter = (req, file, cb) => {
+  if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Only JPG, PNG, or WEBP images are allowed'), false);
+};
+const avatarUpload = multer({
+  storage: createStorage('avatars', ['jpg', 'jpeg', 'png', 'webp']),
+  fileFilter: avatarFileFilter,
+  limits: { fileSize: MAX_FILE_SIZE }
+}).single('avatar');
+
 const noticeAttachmentsUpload = multer({
   storage: createStorage('notice-attachments'),
   fileFilter,
@@ -126,6 +137,7 @@ export const uploadAdmissionDocuments = withUploadErrorHandling(admissionDocumen
 export const uploadCoverLetter = withUploadErrorHandling(coverLetterUpload);
 export const uploadReportCard = withUploadErrorHandling(reportCardUpload);
 export const uploadStudentPhoto = withUploadErrorHandling(studentPhotoUpload);
+export const uploadAvatar = withUploadErrorHandling(avatarUpload);
 export const uploadNoticeAttachments = withUploadErrorHandling(noticeAttachmentsUpload);
 export const uploadResourceFile = withUploadErrorHandling(resourceFileUpload);
 export const uploadQuestionsCsv = withUploadErrorHandling(csvUpload);

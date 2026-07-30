@@ -24,7 +24,8 @@ const emptyManualForm = {
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
 
 const ReportCards = () => {
-  const { apiCall, token } = useAuth();
+  const { apiCall, token, user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { confirmDialog } = useDialog();
   const [reportCards, setReportCards] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, total: 1 });
@@ -276,15 +277,21 @@ const ReportCards = () => {
                       ) : (
                         <a className="btn btn-outline btn-sm" href={rc.fileUrl} target="_blank" rel="noreferrer">View File</a>
                       )}
-                      {rc.type === 'manual' && (
+                      {/* Once published, only an admin may edit/delete a report card */}
+                      {rc.type === 'manual' && (isAdmin || !rc.isPublished) && (
                         <button className="btn btn-outline btn-sm" onClick={() => openEditForm(rc)}>
                           <Icon name="edit" size={14} /> Edit
                         </button>
                       )}
-                      <button className="btn btn-outline btn-sm" onClick={() => handleTogglePublish(rc)}>
-                        {rc.isPublished ? 'Unpublish' : 'Publish'}
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rc._id)}>Delete</button>
+                      {/* Publishing/unpublishing is an admin-only action */}
+                      {isAdmin && (
+                        <button className="btn btn-outline btn-sm" onClick={() => handleTogglePublish(rc)}>
+                          {rc.isPublished ? 'Unpublish' : 'Publish'}
+                        </button>
+                      )}
+                      {(isAdmin || !rc.isPublished) && (
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rc._id)}>Delete</button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -443,7 +450,9 @@ const ReportCards = () => {
                 </div>
 
                 <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
-                  Grades are computed automatically from scores. The report card saves as a draft — publish it from the list once you're happy with it, so parents don't see it while it's still being entered.
+                  Grades are computed automatically from scores. The report card saves as a draft{isAdmin
+                    ? ' — publish it from the list once you\'re happy with it, so parents don\'t see it while it\'s still being entered.'
+                    : ' — an administrator will publish it once it\'s ready. Parents don\'t see it while it\'s still a draft.'}
                 </p>
 
                 <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
