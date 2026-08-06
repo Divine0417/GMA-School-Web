@@ -15,13 +15,28 @@ const emptyQuestion = () => ({
   imageUrl: ''
 });
 
+const toLocalInput = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
+
+const mapQuestionsFromExam = (qs = []) => qs.map((q) => ({
+  key: q._id,
+  questionText: q.questionText,
+  type: q.type,
+  marks: q.marks,
+  options: q.options?.length ? q.options : ['', ''],
+  correctAnswer: q.correctAnswer || '',
+  imageUrl: q.imageUrl || ''
+}));
+
 // Full CBT exam builder for teachers — the same capabilities as the admin
 // console modal (question types, per-question images, CSV import, shuffle /
-// show-results options), portal-styled. It always creates a DRAFT; publishing
-// is admin-only and enforced by the backend, so there's no publish control.
-const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
+// show-results options), portal-styled. It always creates/edits a DRAFT;
+// publishing is admin-only and enforced by the backend. Passing editExamId
+// loads that exam (fetched fresh so correct answers come through — the
+// class-overview roster list strips them) and switches saves to PATCH.
+const StaffExamForm = ({ division, classes = [], editExamId, onClose, onCreated }) => {
   const { apiCall, token, API_BASE_URL } = useAuth();
   const divisionLocked = !!division;
+  const isEditing = !!editExamId;
 
   const [form, setForm] = useState({
     title: '',
@@ -36,12 +51,15 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
     showResultsImmediately: true,
     questions: []
   });
-  // Set once the draft exists (first save or a CSV auto-create), so the final
-  // save updates it rather than creating a duplicate.
-  const [examId, setExamId] = useState(null);
+  // Set once the draft exists (first save, a CSV auto-create, or we're
+  // editing an existing one), so the final save updates it rather than
+  // creating a duplicate.
+  const [examId, setExamId] = useState(editExamId || null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [isLoadingExisting, setIsLoadingExisting] = useState(isEditing);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saving, setSaving] = useState(null); // null | 'draft' | 'submit'
   const [csvUploading, setCsvUploading] = useState(false);
   const [uploadingImageKey, setUploadingImageKey] = useState(null);
   const [knownClasses, setKnownClasses] = useState([]);
@@ -56,6 +74,32 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
 
   useEffect(() => {
     fetchKnownClasses(form.division);
+
+    if (editExamId) {
+      (async () => {
+        const { data } = await apiCall(`/admin/exams/${editExamId}`);
+        if (data.success) {
+          const exam = data.data;
+          setForm({
+            title: exam.title,
+            description: exam.description || '',
+            subject: exam.subject || '',
+            division: exam.division,
+            classesText: (exam.classes || []).join(', '),
+            durationMinutes: exam.durationMinutes,
+            startTime: toLocalInput(exam.startTime),
+            endTime: toLocalInput(exam.endTime),
+            shuffleQuestions: exam.shuffleQuestions,
+            showResultsImmediately: exam.showResultsImmediately,
+            questions: mapQuestionsFromExam(exam.questions)
+          });
+          setReviewNote(exam.reviewNote || '');
+        } else {
+          setError(data.message || 'Failed to load this exam');
+        }
+        setIsLoadingExisting(false);
+      })();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -129,16 +173,6 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
     window.URL.revokeObjectURL(url);
   };
 
-  const mapQuestions = (qs) => qs.map((q) => ({
-    key: q._id,
-    questionText: q.questionText,
-    type: q.type,
-    marks: q.marks,
-    options: q.options?.length ? q.options : ['', ''],
-    correctAnswer: q.correctAnswer || '',
-    imageUrl: q.imageUrl || ''
-  }));
-
   const handleCsvUpload = async (file) => {
     if (!file) return;
     setError('');
@@ -156,7 +190,7 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
       });
       const data = await response.json();
       if (data.success) {
-        setForm((f) => ({ ...f, questions: mapQuestions(data.data.questions) }));
+        setForm((f) => ({ ...f, questions: mapQuestionsFromExam(data.data.questions) }));
         setNotice(data.message + (data.warnings?.length ? ` (skipped ${data.warnings.length})` : ''));
       } else {
         setError(data.message || 'CSV upload failed');
@@ -187,12 +221,13 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
     setUploadingImageKey(null);
   };
 
-  const handleSave = async (e) => {
+  const handleSave = async (e, thenSubmit = false) => {
     e.preventDefault();
     setError('');
     if (!form.title.trim() || form.title.trim().length < 3) return setError('Title must be at least 3 characters.');
     if (!form.division) return setError('Select a division.');
     if (!form.startTime || !form.endTime) return setError('Start and end time are required.');
+    if (thenSubmit && form.questions.length === 0) return setError('Add at least one question before submitting for review.');
 
     for (const q of form.questions) {
       if (q.type === 'mcq') {
@@ -202,7 +237,7 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
       }
     }
 
-    setIsSubmitting(true);
+    setSaving(thenSubmit ? 'submit' : 'draft');
     const payload = buildMetadataPayload();
     payload.questions = form.questions.map((q) => ({
       questionText: q.questionText,
@@ -219,13 +254,28 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
       ? await apiCall(`/admin/exams/${examId}`, { method: 'PATCH', body: JSON.stringify(payload) })
       : await apiCall('/admin/exams', { method: 'POST', body: JSON.stringify(payload) });
 
-    if (data.success) {
-      onCreated?.();
-      onClose();
-    } else {
+    if (!data.success) {
       setError(data.message || data.errors?.[0]?.msg || 'Failed to save exam');
+      setSaving(null);
+      return;
     }
-    setIsSubmitting(false);
+
+    if (thenSubmit) {
+      const savedExamId = data.data._id;
+      const submitResult = await apiCall(`/admin/exams/${savedExamId}/submit`, {
+        method: 'PATCH',
+        body: JSON.stringify({ submitted: true })
+      });
+      if (!submitResult.data.success) {
+        setError(submitResult.data.message || 'Saved, but failed to submit for review');
+        setSaving(null);
+        return;
+      }
+    }
+
+    onCreated?.(thenSubmit);
+    onClose();
+    setSaving(null);
   };
 
   const totalMarks = form.questions.reduce((s, q) => s + (Number(q.marks) || 0), 0);
@@ -234,10 +284,23 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
     <div className="portal-modal-backdrop" onClick={onClose}>
       <div className="portal-modal" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
         <div className="portal-modal-header">
-          <h2>New Exam</h2>
+          <h2>{isEditing ? 'Edit Draft Exam' : 'New Exam'}</h2>
           <button className="portal-modal-close" onClick={onClose} aria-label="Close"><SVGIcon name="close" size="22" /></button>
         </div>
         <div className="portal-modal-body">
+          {isLoadingExisting ? (
+            <div className="dashboard-loading">
+              <SVGIcon name="loader" size="48" className="spinning" />
+              <p>Loading exam...</p>
+            </div>
+          ) : (
+          <>
+          {reviewNote && (
+            <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
+              <SVGIcon name="alert-circle" size="20" />
+              <span><strong>Sent back by admin:</strong> {reviewNote}</span>
+            </div>
+          )}
           {error && (
             <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
               <SVGIcon name="alert-circle" size="20" /><span>{error}</span>
@@ -249,7 +312,7 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
             </div>
           )}
 
-          <form onSubmit={handleSave}>
+          <form onSubmit={(e) => handleSave(e, false)}>
             <div className="form-group">
               <label className="form-label">Title</label>
               <input className="form-input" required minLength={3} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Mathematics — Mid-term Test" />
@@ -390,13 +453,20 @@ const StaffExamForm = ({ division, classes = [], onClose, onCreated }) => {
             ))}
 
             <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
-              This saves as a draft. An administrator will publish it before students can take it.
+              Save as a draft to keep editing later, or submit it for an administrator to review and publish.
+              Once submitted you won't be able to make further changes yourself.
             </p>
-
-            <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
-              {isSubmitting ? <><SVGIcon name="loader" size="18" className="spinning" /> Saving…</> : 'Save Draft Exam'}
-            </button>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <button type="submit" className="btn btn-outline btn-full" disabled={!!saving}>
+                {saving === 'draft' ? <><SVGIcon name="loader" size="18" className="spinning" /> Saving…</> : 'Save Draft'}
+              </button>
+              <button type="button" className="btn btn-primary btn-full" disabled={!!saving} onClick={(e) => handleSave(e, true)}>
+                {saving === 'submit' ? <><SVGIcon name="loader" size="18" className="spinning" /> Submitting…</> : 'Submit for Review'}
+              </button>
+            </div>
           </form>
+          </>
+          )}
         </div>
       </div>
     </div>

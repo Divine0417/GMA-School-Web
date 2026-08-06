@@ -2,31 +2,43 @@ import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import SVGIcon from '../../components/icons/SVGIcon';
 
-const TERMS = ['first', 'second', 'third'];
+const TERMS = ['First', 'Second', 'Third'];
 const emptySubject = { name: '', ca1: '', ca2: '', exam: '' };
+
+const formFromExisting = (card) => ({
+  term: card?.term || 'first',
+  session: card?.session || '2024/2025',
+  subjects: card?.subjects?.length
+    ? card.subjects.map((s) => ({ name: s.name || '', ca1: s.ca1 ?? '', ca2: s.ca2 ?? '', exam: s.exam ?? '' }))
+    : [{ ...emptySubject }],
+  attendance: {
+    daysPresent: card?.attendance?.daysPresent ?? '',
+    daysAbsent: card?.attendance?.daysAbsent ?? '',
+    totalDays: card?.attendance?.totalDays ?? ''
+  },
+  position: card?.summary?.position || '',
+  numberInClass: card?.summary?.numberInClass ?? '',
+  classTeacherComment: card?.classTeacherComment || '',
+  principalComment: card?.principalComment || '',
+  nextTermBeginsDate: card?.nextTermBeginsDate ? card.nextTermBeginsDate.slice(0, 10) : ''
+});
 
 // Report-card modal for teachers — same capabilities as the admin console
 // modal (manual score entry OR PDF upload), portal-styled and bound to the
-// student picked from the roster. Always creates a DRAFT: publishing is
-// admin-only and enforced by the backend.
-const StaffReportCardForm = ({ student, onClose, onCreated }) => {
+// student picked from the roster. Editing an existingReportCard (a draft
+// the teacher started earlier) switches this to PATCH instead of POST and
+// hides the PDF-upload tab, since editing is manual-only on the backend.
+// "Save Draft" leaves it open for further edits; "Submit for Review" saves
+// and locks it — from then on only an admin can change or publish it.
+const StaffReportCardForm = ({ student, existingReportCard, onClose, onCreated }) => {
   const { apiCall, token, API_BASE_URL } = useAuth();
+  const isEditing = !!existingReportCard;
   const [mode, setMode] = useState('manual');
 
-  const [form, setForm] = useState({
-    term: 'first',
-    session: '2024/2025',
-    subjects: [{ ...emptySubject }],
-    attendance: { daysPresent: '', daysAbsent: '', totalDays: '' },
-    position: '',
-    numberInClass: '',
-    classTeacherComment: '',
-    principalComment: '',
-    nextTermBeginsDate: ''
-  });
+  const [form, setForm] = useState(() => formFromExisting(existingReportCard));
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(null); // null | 'draft' | 'submit'
 
   const updateSubject = (i, field, value) => {
     setForm((prev) => {
@@ -38,13 +50,13 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
   const addSubject = () => setForm((p) => ({ ...p, subjects: [...p.subjects, { ...emptySubject }] }));
   const removeSubject = (i) => setForm((p) => ({ ...p, subjects: p.subjects.filter((_, idx) => idx !== i) }));
 
-  const submitManual = async (e) => {
+  const submitManual = async (e, thenSubmit = false) => {
     e.preventDefault();
     setError('');
     if (form.subjects.length === 0 || form.subjects.some((s) => !s.name.trim())) {
       return setError('Every subject needs a name.');
     }
-    setSubmitting(true);
+    setSaving(thenSubmit ? 'submit' : 'draft');
     const payload = {
       studentId: student._id,
       term: form.term,
@@ -68,17 +80,40 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
       principalComment: form.principalComment || undefined,
       nextTermBeginsDate: form.nextTermBeginsDate || undefined
     };
-    const { data } = await apiCall('/admin/report-cards/manual', { method: 'POST', body: JSON.stringify(payload) });
-    if (data.success) { onCreated?.(); onClose(); }
-    else setError(data.message || data.errors?.[0]?.msg || 'Failed to create report card');
-    setSubmitting(false);
+
+    const { data } = isEditing
+      ? await apiCall(`/admin/report-cards/manual/${existingReportCard._id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+      : await apiCall('/admin/report-cards/manual', { method: 'POST', body: JSON.stringify(payload) });
+
+    if (!data.success) {
+      setError(data.message || data.errors?.[0]?.msg || 'Failed to save report card');
+      setSaving(null);
+      return;
+    }
+
+    if (thenSubmit) {
+      const reportCardId = data.data._id;
+      const submitResult = await apiCall(`/admin/report-cards/manual/${reportCardId}/submit`, {
+        method: 'PATCH',
+        body: JSON.stringify({ submitted: true })
+      });
+      if (!submitResult.data.success) {
+        setError(submitResult.data.message || 'Saved, but failed to submit for review');
+        setSaving(null);
+        return;
+      }
+    }
+
+    onCreated?.(thenSubmit);
+    onClose();
+    setSaving(null);
   };
 
   const submitUpload = async (e) => {
     e.preventDefault();
     setError('');
     if (!file) return setError('Choose a PDF file to upload.');
-    setSubmitting(true);
+    setSaving('draft');
     const formData = new FormData();
     formData.append('reportCard', file);
     formData.append('studentId', student._id);
@@ -96,21 +131,29 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
     } catch {
       setError('Network error during upload.');
     }
-    setSubmitting(false);
+    setSaving(null);
   };
 
   return (
     <div className="portal-modal-backdrop" onClick={onClose}>
       <div className="portal-modal" onClick={(e) => e.stopPropagation()}>
         <div className="portal-modal-header">
-          <h2>New Report Card — {student.fullName}</h2>
+          <h2>{isEditing ? 'Edit Draft Report Card' : 'New Report Card'} — {student.fullName}</h2>
           <button className="portal-modal-close" onClick={onClose} aria-label="Close"><SVGIcon name="close" size="22" /></button>
         </div>
         <div className="portal-modal-body">
-          <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-            <button type="button" className={`btn btn-sm ${mode === 'manual' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('manual')}>Enter Scores</button>
-            <button type="button" className={`btn btn-sm ${mode === 'upload' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('upload')}>Upload PDF Instead</button>
-          </div>
+          {existingReportCard?.reviewNote && (
+            <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
+              <SVGIcon name="alert-circle" size="20" />
+              <span><strong>Sent back by admin:</strong> {existingReportCard.reviewNote}</span>
+            </div>
+          )}
+          {!isEditing && (
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+              <button type="button" className={`btn btn-sm ${mode === 'manual' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('manual')}>Enter Scores</button>
+              <button type="button" className={`btn btn-sm ${mode === 'upload' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('upload')}>Upload PDF Instead</button>
+            </div>
+          )}
 
           {error && (
             <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
@@ -132,7 +175,7 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
           </div>
 
           {mode === 'manual' ? (
-            <form onSubmit={submitManual}>
+            <form onSubmit={(e) => submitManual(e, false)}>
               <label className="form-label">Subjects &amp; Scores</label>
               <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-2)' }}>Subject · CA1 · CA2 · Exam — grades computed automatically.</p>
               {form.subjects.map((s, i) => {
@@ -191,11 +234,17 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
               </div>
 
               <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
-                This saves as a draft. An administrator will publish it before parents/students can see it.
+                Save as a draft to keep editing later, or submit it for an administrator to review and publish.
+                Once submitted you won't be able to make further changes yourself.
               </p>
-              <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
-                {submitting ? <><SVGIcon name="loader" size="18" className="spinning" /> Saving…</> : 'Save Draft Report Card'}
-              </button>
+              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                <button type="submit" className="btn btn-outline btn-full" disabled={!!saving}>
+                  {saving === 'draft' ? <><SVGIcon name="loader" size="18" className="spinning" /> Saving…</> : 'Save Draft'}
+                </button>
+                <button type="button" className="btn btn-primary btn-full" disabled={!!saving} onClick={(e) => submitManual(e, true)}>
+                  {saving === 'submit' ? <><SVGIcon name="loader" size="18" className="spinning" /> Submitting…</> : 'Submit for Review'}
+                </button>
+              </div>
             </form>
           ) : (
             <form onSubmit={submitUpload}>
@@ -206,8 +255,8 @@ const StaffReportCardForm = ({ student, onClose, onCreated }) => {
               <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-4)' }}>
                 The uploaded report card saves as a draft. An administrator will publish it before parents/students can see it.
               </p>
-              <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
-                {submitting ? <><SVGIcon name="loader" size="18" className="spinning" /> Uploading…</> : 'Upload Draft Report Card'}
+              <button type="submit" className="btn btn-primary btn-full" disabled={!!saving}>
+                {saving ? <><SVGIcon name="loader" size="18" className="spinning" /> Uploading…</> : 'Upload Draft Report Card'}
               </button>
             </form>
           )}

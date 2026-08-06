@@ -5,7 +5,7 @@ import Icon from '../components/Icon';
 import { API_BASE_URL } from '../config/api';
 
 const TYPES = ['document', 'video', 'link'];
-const DIVISIONS = ['nursery', 'primary', 'secondary', 'college', 'all'];
+const DIVISIONS = ['Nursery', 'Primary', 'Secondary', 'College', 'all'];
 const TYPE_ICON = { document: 'fileText', video: 'video', link: 'externalLink' };
 
 const emptyForm = {

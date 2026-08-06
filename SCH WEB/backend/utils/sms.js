@@ -1,30 +1,41 @@
-// Termii (https://termii.com) — SMS delivery for Nigerian phone numbers.
-// TERMII_SENDER_ID must be a sender ID registered/approved in your Termii
-// dashboard before real messages will deliver; until then sends will fail
-// and are caught + logged rather than breaking the calling request.
-const TERMII_API_KEY = process.env.TERMII_API_KEY;
-const TERMII_SENDER_ID = process.env.TERMII_SENDER_ID || 'GMASchool';
-const TERMII_BASE_URL = 'https://api.ng.termii.com/api/sms/send';
+// Sendchamp (https://sendchamp.com) — SMS delivery for Nigerian phone numbers.
+// Defaults to "SAlert", Sendchamp's default shared sender name (works
+// immediately, no approval needed) — swap SENDCHAMP_SENDER_NAME for a custom
+// registered/approved sender name once one exists, for GMA-branded messages.
+const SENDCHAMP_API_KEY = process.env.SENDCHAMP_API_KEY;
+const SENDCHAMP_SENDER_NAME = process.env.SENDCHAMP_SENDER_NAME || 'SAlert';
+const SENDCHAMP_BASE_URL = 'https://api.sendchamp.com/api/v1/sms/send';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+// Numbers in this DB show up in mixed formats ("+234-701-234-5678", plain
+// "08136903219", etc.) — Sendchamp wants a bare international number with no
+// leading zero, +, or separators (e.g. "2348136903219").
+const normalizePhone = (phone) => {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('234')) return digits;
+  if (digits.startsWith('0')) return `234${digits.slice(1)}`;
+  return `234${digits}`;
+};
+
 const sendSMS = async ({ to, message }) => {
-  if (!TERMII_API_KEY) {
-    console.error(`SMS not sent to ${to}: TERMII_API_KEY is not configured`);
+  if (!SENDCHAMP_API_KEY) {
+    console.error(`SMS not sent to ${to}: SENDCHAMP_API_KEY is not configured`);
     return;
   }
 
   try {
-    const response = await fetch(TERMII_BASE_URL, {
+    const response = await fetch(SENDCHAMP_BASE_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SENDCHAMP_API_KEY}`
+      },
       body: JSON.stringify({
-        api_key: TERMII_API_KEY,
-        to,
-        from: TERMII_SENDER_ID,
-        sms: message,
-        type: 'plain',
-        channel: 'generic'
+        to: [normalizePhone(to)],
+        message,
+        sender_name: SENDCHAMP_SENDER_NAME,
+        route: 'dnd' // delivers even to DND-active lines, which most Nigerian numbers are
       })
     });
 

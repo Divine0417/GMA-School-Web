@@ -30,8 +30,17 @@ const StaffClassOverview = () => {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [showExamForm, setShowExamForm] = useState(false);
+  const [editingExamId, setEditingExamId] = useState(null);
   const [reportStudent, setReportStudent] = useState(null);
+  const [existingReportCard, setExistingReportCard] = useState(null);
+  const [reportStatus, setReportStatus] = useState({}); // studentId -> latest report card (or absent = none yet)
+  const [exams, setExams] = useState([]);
   const [flash, setFlash] = useState('');
+
+  const fetchExams = async () => {
+    const { data } = await apiCall('/admin/exams?limit=50');
+    if (data.success) setExams(data.data.exams || []);
+  };
 
   // Teachers (and admins) can prepare exams and report cards as drafts;
   // bursars have no academic duties, so they don't get these actions.
@@ -39,19 +48,54 @@ const StaffClassOverview = () => {
     || user?.staffType === 'class_teacher'
     || user?.staffType === 'subject_teacher';
 
+  const fetchReportStatus = async (studentList) => {
+    if (studentList.length === 0) return;
+    const ids = studentList.map((s) => s._id).join(',');
+    const { data } = await apiCall(`/admin/report-cards/latest-by-student?studentIds=${ids}`);
+    if (data.success) setReportStatus(data.data);
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setIsLoading(true);
       const { data } = await apiCall('/admin/students?status=active&limit=100');
       if (cancelled) return;
-      if (data.success) setStudents(data.data.students || []);
-      else setError(data.message || 'Failed to load your class');
+      if (data.success) {
+        setStudents(data.data.students || []);
+        if (canManageAcademics) {
+          fetchReportStatus(data.data.students || []);
+          fetchExams();
+        }
+      } else {
+        setError(data.message || 'Failed to load your class');
+      }
       setIsLoading(false);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Report status label/action for a given student — drives both the badge
+  // shown on their roster card and what clicking "Report" does.
+  const reportInfoFor = (studentId) => {
+    const card = reportStatus[studentId];
+    if (!card) return { label: 'New Report', variant: 'new' };
+    if (card.isPublished) return { label: 'Published', variant: 'published', card };
+    if (card.submittedAt) return { label: 'Submitted', variant: 'submitted', card };
+    if (card.reviewNote) return { label: 'Needs Revision', variant: 'revision', card };
+    return { label: 'Continue Draft', variant: 'draft', card };
+  };
+
+  const examInfoFor = (exam) => {
+    if (exam.isPublished) {
+      if (new Date(exam.endTime) < new Date()) return { label: 'Expired', variant: 'expired' };
+      return { label: 'Published', variant: 'published' };
+    }
+    if (exam.submittedAt) return { label: 'Submitted', variant: 'submitted' };
+    if (exam.reviewNote) return { label: 'Needs Revision', variant: 'revision' };
+    return { label: 'Draft', variant: 'draft' };
+  };
 
   const stats = useMemo(() => {
     const classes = new Set();
@@ -141,14 +185,74 @@ const StaffClassOverview = () => {
         </div>
       )}
 
+      {canManageAcademics && (
+        <>
+          <div className="co-roster-head">
+            <h2>Exams</h2>
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditingExamId(null); setShowExamForm(true); }}>
+              <SVGIcon name="file-text" size="16" /> New Exam
+            </button>
+          </div>
+          {exams.length === 0 ? (
+            <div className="empty-state" style={{ marginBottom: 'var(--space-5)' }}>
+              <SVGIcon name="file-text" size="36" />
+              <p>No exams yet.</p>
+            </div>
+          ) : (
+            <div className="co-roster" style={{ marginBottom: 'var(--space-5)' }}>
+              {exams.map((exam) => {
+                const info = examInfoFor(exam);
+                const isEditable = info.variant === 'draft' || info.variant === 'revision';
+                return (
+                  <div key={exam._id} className="co-student">
+                    <button
+                      className="co-student-open"
+                      disabled={!isEditable}
+                      style={!isEditable ? { cursor: 'default' } : undefined}
+                      onClick={() => { if (isEditable) { setEditingExamId(exam._id); setShowExamForm(true); } }}
+                      title={info.variant === 'revision' ? `Sent back: ${exam.reviewNote}` : undefined}
+                    >
+                      <div className="co-student-avatar"><SVGIcon name="file-text" size="18" /></div>
+                      <div className="co-student-info">
+                        <span className="co-student-name">{exam.title}</span>
+                        <span className="co-student-meta">
+                          {exam.subject ? `${exam.subject} · ` : ''}{exam.division}{exam.classes?.length ? ` · ${exam.classes.join(', ')}` : ''}
+                        </span>
+                      </div>
+                    </button>
+                    <div className="co-student-actions">
+                      {isEditable ? (
+                        <button
+                          className={`btn btn-sm ${info.variant === 'revision' ? 'btn-primary' : 'btn-outline'}`}
+                          style={info.variant === 'revision' ? { background: '#F59E0B', borderColor: '#F59E0B' } : undefined}
+                          onClick={() => { setEditingExamId(exam._id); setShowExamForm(true); }}
+                        >
+                          <SVGIcon name={info.variant === 'revision' ? 'alert-circle' : 'file-text'} size="14" /> {info.variant === 'revision' ? 'Needs Revision' : 'Edit Draft'}
+                        </button>
+                      ) : (
+                        <span
+                          className={`co-report-badge co-report-badge-${info.variant}`}
+                          title={
+                            info.variant === 'submitted' ? 'Submitted — awaiting admin review'
+                              : info.variant === 'expired' ? 'Its window has closed — students can no longer see or take it'
+                              : 'Published — visible to students'
+                          }
+                        >
+                          <SVGIcon name={info.variant === 'published' ? 'checkCircle' : info.variant === 'expired' ? 'alert-circle' : 'clock'} size="14" /> {info.label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
       <div className="co-roster-head">
         <h2>Students</h2>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-          {canManageAcademics && (
-            <button className="btn btn-primary btn-sm" onClick={() => setShowExamForm(true)}>
-              <SVGIcon name="file-text" size="16" /> New Exam
-            </button>
-          )}
           <div className="co-search">
             <input
               type="text"
@@ -168,26 +272,47 @@ const StaffClassOverview = () => {
         </div>
       ) : (
         <div className="co-roster">
-          {filtered.map((s) => (
-            <div key={s._id} className="co-student">
-              <button className="co-student-open" onClick={() => openStudent(s)}>
-                <div className="co-student-avatar">
-                  {s.photoUrl ? <img src={s.photoUrl} alt={s.fullName} /> : <span>{initials(s.fullName)}</span>}
-                </div>
-                <div className="co-student-info">
-                  <span className="co-student-name">{s.fullName}</span>
-                  <span className="co-student-meta">{s.regNumber}{s.class ? ` · ${s.class}` : ''}</span>
-                </div>
-              </button>
-              {canManageAcademics && (
-                <div className="co-student-actions">
-                  <button className="btn btn-outline btn-sm" onClick={() => setReportStudent(s)} title="Add report card">
-                    <SVGIcon name="file-text" size="14" /> Report
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+          {filtered.map((s) => {
+            const info = canManageAcademics ? reportInfoFor(s._id) : null;
+            return (
+              <div key={s._id} className="co-student">
+                <button className="co-student-open" onClick={() => openStudent(s)}>
+                  <div className="co-student-avatar">
+                    {s.photoUrl ? <img src={s.photoUrl} alt={s.fullName} /> : <span>{initials(s.fullName)}</span>}
+                  </div>
+                  <div className="co-student-info">
+                    <span className="co-student-name">{s.fullName}</span>
+                    <span className="co-student-meta">{s.regNumber}{s.class ? ` · ${s.class}` : ''}</span>
+                  </div>
+                </button>
+                {info && (
+                  <div className="co-student-actions">
+                    {info.variant === 'draft' || info.variant === 'new' || info.variant === 'revision' ? (
+                      <button
+                        className={`btn btn-sm ${info.variant === 'revision' ? 'btn-primary' : 'btn-outline'}`}
+                        style={info.variant === 'revision' ? { background: '#F59E0B', borderColor: '#F59E0B' } : undefined}
+                        onClick={() => { setExistingReportCard(info.card || null); setReportStudent(s); }}
+                        title={
+                          info.variant === 'revision' ? `Sent back: ${info.card.reviewNote}`
+                            : info.variant === 'draft' ? 'Continue this draft report card'
+                            : 'Add report card'
+                        }
+                      >
+                        <SVGIcon name={info.variant === 'revision' ? 'alert-circle' : 'file-text'} size="14" /> {info.label}
+                      </button>
+                    ) : (
+                      <span
+                        className={`co-report-badge co-report-badge-${info.variant}`}
+                        title={info.variant === 'submitted' ? 'Submitted — awaiting admin review' : 'Published — visible to student/parent'}
+                      >
+                        <SVGIcon name={info.variant === 'published' ? 'checkCircle' : 'clock'} size="14" /> {info.label}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -195,16 +320,26 @@ const StaffClassOverview = () => {
         <StaffExamForm
           division={user?.division}
           classes={user?.classes || []}
-          onClose={() => setShowExamForm(false)}
-          onCreated={() => setFlash('Exam saved as a draft. An administrator will publish it.')}
+          editExamId={editingExamId}
+          onClose={() => { setShowExamForm(false); setEditingExamId(null); }}
+          onCreated={(submitted) => {
+            setFlash(submitted ? 'Exam submitted for review.' : 'Exam saved as a draft.');
+            fetchExams();
+          }}
         />
       )}
 
       {reportStudent && (
         <StaffReportCardForm
           student={reportStudent}
-          onClose={() => setReportStudent(null)}
-          onCreated={() => setFlash(`Draft report card saved for ${reportStudent.fullName}. An administrator will publish it.`)}
+          existingReportCard={existingReportCard}
+          onClose={() => { setReportStudent(null); setExistingReportCard(null); }}
+          onCreated={(submitted) => {
+            setFlash(submitted
+              ? `Report card for ${reportStudent.fullName} submitted for review.`
+              : `Draft report card saved for ${reportStudent.fullName}.`);
+            fetchReportStatus(students);
+          }}
         />
       )}
     </div>

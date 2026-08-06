@@ -6,7 +6,7 @@ import { API_BASE_URL } from '../config/api';
 
 const CATEGORIES = ['general', 'academic', 'fees', 'events', 'holidays', 'emergency', 'maintenance', 'exam', 'admission'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
-const DIVISIONS = ['nursery', 'primary', 'secondary', 'college', 'all'];
+const DIVISIONS = ['Nursery', 'Primary', 'Secondary', 'College', 'all'];
 const ROLES = ['student', 'parent', 'staff', 'admin', 'all'];
 
 const emptyForm = {

@@ -36,7 +36,7 @@ const toLocalInput = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : 
 const Exams = () => {
   const { apiCall, token, user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { confirmDialog, alertDialog } = useDialog();
+  const { confirmDialog, alertDialog, promptDialog } = useDialog();
 
   const [exams, setExams] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, total: 1 });
@@ -128,6 +128,25 @@ const Exams = () => {
     const { data } = await apiCall(`/admin/exams/${examId}/publish`, {
       method: 'PATCH',
       body: JSON.stringify({ isPublished: !isPublished })
+    });
+    if (data.success) {
+      setExams((prev) => prev.map((e) => (e._id === examId ? data.data : e)));
+    } else {
+      alertDialog(data.message || 'Failed to update exam');
+    }
+  };
+
+  const sendExamBack = async (examId) => {
+    const note = await promptDialog('What needs to change before this can be resubmitted? The teacher will see this note.', {
+      title: 'Send Back for Corrections',
+      confirmLabel: 'Send Back',
+      placeholder: 'e.g. Question 4 has two correct-looking options — please clarify.'
+    });
+    if (note === null) return; // cancelled
+
+    const { data } = await apiCall(`/admin/exams/${examId}/submit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ submitted: false, note })
     });
     if (data.success) {
       setExams((prev) => prev.map((e) => (e._id === examId ? data.data : e)));
@@ -435,11 +454,23 @@ const Exams = () => {
                     {' → '}
                     {new Date(exam.endTime).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
                   </td>
-                  <td data-label="Status"><span className={`badge badge-${exam.isPublished ? 'approved' : 'pending'}`}>{exam.isPublished ? 'Published' : 'Draft'}</span></td>
+                  <td data-label="Status">
+                    {exam.isPublished && new Date(exam.endTime) < new Date() ? (
+                      <span className="badge badge-overdue" title="Its window has closed — students can no longer see or take it">Expired</span>
+                    ) : (
+                      <span className={`badge badge-${exam.isPublished ? 'approved' : exam.submittedAt ? 'reviewing' : 'cancelled'}`}>
+                        {exam.isPublished ? 'Published' : exam.submittedAt ? 'Submitted' : 'Draft'}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    {/* Once published, only an admin may edit/delete a live exam */}
-                    {(isAdmin || !exam.isPublished) && (
+                    {/* Once submitted or published, only an admin may edit/delete a live exam */}
+                    {(isAdmin || !(exam.submittedAt || exam.isPublished)) && (
                       <button className="btn btn-outline btn-sm" onClick={() => openEditForm(exam._id)}>Edit</button>
+                    )}
+                    {/* Sending a submitted exam back to staff for corrections is admin-only */}
+                    {isAdmin && exam.submittedAt && !exam.isPublished && (
+                      <button className="btn btn-outline btn-sm" onClick={() => sendExamBack(exam._id)}>Send Back</button>
                     )}
                     {/* Publishing/unpublishing is an admin-only action */}
                     {isAdmin && (
@@ -448,7 +479,7 @@ const Exams = () => {
                       </button>
                     )}
                     <button className="btn btn-outline btn-sm" onClick={() => openSubmissions(exam)}>Submissions</button>
-                    {(isAdmin || !exam.isPublished) && (
+                    {(isAdmin || !(exam.submittedAt || exam.isPublished)) && (
                       <button className="btn btn-danger btn-sm" onClick={() => deleteExam(exam._id)}>Delete</button>
                     )}
                   </td>

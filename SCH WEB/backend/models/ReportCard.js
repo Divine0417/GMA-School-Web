@@ -83,6 +83,21 @@ const reportCardSchema = new mongoose.Schema({
     default: function() { return this.type === 'uploaded'; }
   },
 
+  // A staff member submits a manual report card when they're done entering
+  // scores — this locks it from further staff edits (only an admin can still
+  // change it) while it awaits publishing. Distinct from isPublished: a
+  // submitted card isn't visible to parents/students yet, it's just locked
+  // on the staff side pending admin review.
+  submittedAt: Date,
+  submittedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Set when an admin sends a submitted card back for corrections — shown to
+  // the staff member so they know it wasn't just silently reopened. Cleared
+  // once they resubmit, so a stale note doesn't linger after being addressed.
+  reviewNote: String,
+
   uploadedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

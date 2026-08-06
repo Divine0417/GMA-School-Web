@@ -85,6 +85,19 @@ const examSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // A staff member submits an exam draft when it's ready — this locks it
+  // from further staff edits (only an admin can still change it) while it
+  // awaits publishing. Distinct from isPublished: a submitted exam isn't
+  // live for students yet, it's just locked on the staff side for review.
+  submittedAt: Date,
+  submittedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Set when an admin sends a submitted exam back for corrections — shown to
+  // the staff member so they know it wasn't just silently reopened. Cleared
+  // once they resubmit, so a stale note doesn't linger after being addressed.
+  reviewNote: String,
   isActive: {
     type: Boolean,
     default: true

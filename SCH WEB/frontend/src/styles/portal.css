@@ -673,7 +673,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-5);
   text-decoration: none;
   color: rgba(255, 255, 255, 0.8);
   font-size: var(--text-sm);
@@ -765,6 +765,28 @@
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   box-shadow: var(--shadow-sm);
+}
+
+/* Every in-app portal page (Dashboard, Bills, Notices, Resources, Exams...)
+   wraps its content in .dashboard and uses a plain <h1>/<h2> for its page
+   title — but the global h1/h2 rules in global.css are sized for the public
+   marketing site's hero headlines (clamp up to 60px/48px), not a compact
+   in-app heading. Scope them back down here to match the admin console's
+   page-header sizing instead. */
+.dashboard h1 {
+  font-size: var(--text-3xl);
+}
+
+.dashboard h2 {
+  font-size: var(--text-2xl);
+}
+
+.dashboard h3 {
+  font-size: var(--text-xl);
+}
+
+.dashboard h4 {
+  font-size: var(--text-lg);
 }
 
 .welcome-section {
@@ -1423,7 +1445,7 @@
 
 .co-roster {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--space-4);
 }
 
@@ -1475,9 +1497,50 @@
   text-overflow: ellipsis;
 }
 
-.co-student-meta { font-size: var(--text-xs); color: var(--color-text-secondary); }
+.co-student-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .co-student-arrow { color: var(--color-text-muted); flex-shrink: 0; }
+
+.co-report-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+.co-report-badge-submitted {
+  background: rgba(245, 158, 11, 0.12);
+  color: #92600a;
+}
+
+.co-report-badge-published {
+  background: rgba(16, 185, 129, 0.12);
+  color: #067a55;
+}
+
+.co-report-badge-expired {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+/* Tab/filter row (e.g. the Upcoming-vs-History toggle on CBT Exams) — the
+   buttons themselves have no built-in spacing, so without this they render
+   flush against each other. */
+.filter-bar {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
 
 @media (max-width: 640px) {
   .co-search, .co-search input { width: 100%; min-width: 0; }
@@ -1590,6 +1653,26 @@
   padding: var(--space-1);
 }
 .portal-modal-body { padding: var(--space-5); }
+
+/* .form-input/.form-group (global.css) are sized for the spacious public
+   marketing forms (Admissions, Contact...) — 16px padding, 16px text, 24px
+   gap between fields. In a dense staff modal with a dozen+ stacked fields
+   that compounds into a huge scroll; tighten it back down to roughly the
+   admin console's form density instead. */
+.portal-modal-body .form-group {
+  margin-bottom: var(--space-4);
+}
+
+.portal-modal-body .form-input,
+.portal-modal-body .form-select,
+.portal-modal-body .form-textarea {
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.portal-modal-body .form-label {
+  margin-bottom: var(--space-1);
+}
 
 .portal-form-row {
   display: grid;

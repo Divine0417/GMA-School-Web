@@ -26,7 +26,7 @@ const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2
 const ReportCards = () => {
   const { apiCall, token, user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { confirmDialog } = useDialog();
+  const { confirmDialog, promptDialog } = useDialog();
   const [reportCards, setReportCards] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, total: 1 });
   const [isLoading, setIsLoading] = useState(true);
@@ -86,6 +86,23 @@ const ReportCards = () => {
     const { data } = await apiCall(`/admin/report-cards/${reportCard._id}/publish`, {
       method: 'PATCH',
       body: JSON.stringify({ isPublished: !reportCard.isPublished })
+    });
+    if (data.success) {
+      setReportCards((prev) => prev.map((rc) => (rc._id === reportCard._id ? data.data : rc)));
+    }
+  };
+
+  const handleUnsubmit = async (reportCard) => {
+    const note = await promptDialog('What needs to change before this can be resubmitted? The teacher will see this note.', {
+      title: 'Send Back for Corrections',
+      confirmLabel: 'Send Back',
+      placeholder: 'e.g. CA1 scores for Mathematics look too high — please double check.'
+    });
+    if (note === null) return; // cancelled
+
+    const { data } = await apiCall(`/admin/report-cards/manual/${reportCard._id}/submit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ submitted: false, note })
     });
     if (data.success) {
       setReportCards((prev) => prev.map((rc) => (rc._id === reportCard._id ? data.data : rc)));
@@ -269,7 +286,11 @@ const ReportCards = () => {
                   <td data-label="Term" style={{ textTransform: 'capitalize' }}>{rc.term}</td>
                   <td data-label="Session">{rc.session}</td>
                   <td data-label="Type"><span className="badge badge-pending" style={{ textTransform: 'capitalize' }}>{rc.type}</span></td>
-                  <td data-label="Status"><span className={`badge badge-${rc.isPublished ? 'approved' : 'pending'}`}>{rc.isPublished ? 'Published' : 'Draft'}</span></td>
+                  <td data-label="Status">
+                    <span className={`badge badge-${rc.isPublished ? 'approved' : rc.submittedAt ? 'reviewing' : 'cancelled'}`}>
+                      {rc.isPublished ? 'Published' : rc.submittedAt ? 'Submitted' : 'Draft'}
+                    </span>
+                  </td>
                   <td>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       {rc.type === 'manual' ? (
@@ -277,11 +298,15 @@ const ReportCards = () => {
                       ) : (
                         <a className="btn btn-outline btn-sm" href={rc.fileUrl} target="_blank" rel="noreferrer">View File</a>
                       )}
-                      {/* Once published, only an admin may edit/delete a report card */}
-                      {rc.type === 'manual' && (isAdmin || !rc.isPublished) && (
+                      {/* Once submitted or published, only an admin may edit/delete a report card */}
+                      {rc.type === 'manual' && (isAdmin || !(rc.submittedAt || rc.isPublished)) && (
                         <button className="btn btn-outline btn-sm" onClick={() => openEditForm(rc)}>
                           <Icon name="edit" size={14} /> Edit
                         </button>
+                      )}
+                      {/* Sending a submitted card back to the teacher for corrections is admin-only */}
+                      {isAdmin && rc.type === 'manual' && rc.submittedAt && !rc.isPublished && (
+                        <button className="btn btn-outline btn-sm" onClick={() => handleUnsubmit(rc)}>Send Back</button>
                       )}
                       {/* Publishing/unpublishing is an admin-only action */}
                       {isAdmin && (
@@ -289,7 +314,7 @@ const ReportCards = () => {
                           {rc.isPublished ? 'Unpublish' : 'Publish'}
                         </button>
                       )}
-                      {(isAdmin || !rc.isPublished) && (
+                      {(isAdmin || !(rc.submittedAt || rc.isPublished)) && (
                         <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rc._id)}>Delete</button>
                       )}
                     </div>
@@ -506,7 +531,9 @@ const ReportCards = () => {
                 </div>
               </div>
               <div className="invoice-letterhead-right">
-                <span className={`badge badge-${viewingReportCard.isPublished ? 'approved' : 'pending'}`}>{viewingReportCard.isPublished ? 'Published' : 'Draft'}</span>
+                      <span className={`badge badge-${viewingReportCard.isPublished ? 'approved' : viewingReportCard.submittedAt ? 'reviewing' : 'cancelled'}`}>
+                  {viewingReportCard.isPublished ? 'Published' : viewingReportCard.submittedAt ? 'Submitted' : 'Draft'}
+                </span>
               </div>
             </div>
 

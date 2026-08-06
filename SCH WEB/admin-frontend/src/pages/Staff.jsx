@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import PasswordField from '../components/PasswordField';
 
-const DIVISIONS = ['nursery', 'primary', 'secondary', 'college'];
+const DIVISIONS = ['Nursery', 'Primary', 'Secondary', 'College'];
 
 const STAFF_TYPES = [
   { value: 'class_teacher', label: 'Class Teacher' },

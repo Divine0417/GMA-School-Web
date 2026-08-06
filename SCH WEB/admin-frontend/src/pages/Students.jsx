@@ -4,7 +4,7 @@ import { useDialog } from '../contexts/DialogContext';
 import Icon from '../components/Icon';
 import { API_BASE_URL } from '../config/api';
 
-const DIVISIONS = ['nursery', 'primary', 'secondary', 'college'];
+const DIVISIONS = ['Nursery', 'Primary', 'Secondary', 'College'];
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 

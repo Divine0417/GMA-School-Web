@@ -16,9 +16,9 @@ services:
         value: 7d
       - key: RESEND_API_KEY
         sync: false
-      - key: TERMII_API_KEY
+      - key: SENDCHAMP_API_KEY
         sync: false
-      - key: TERMII_SENDER_ID
+      - key: SENDCHAMP_SENDER_NAME
         sync: false
       - key: PAYSTACK_SECRET_KEY
         sync: false

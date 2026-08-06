@@ -237,7 +237,7 @@ gmaschool.edu.ng/
 - [x] Express.js middleware for auth protection and role-based access (`authenticateToken`, `authorizeRoles`, `ProtectedRoute`)
 - [x] MongoDB collections design (users, students, contactMessages, etc.) — `Student.userId` = the student's own account, `Student.parentUserId` = the linked parent account (one parent account can link multiple children, for siblings)
 - [x] Transactional email (Resend) — contact/admission/career confirmations, school notification emails for every new submission, password reset links
-- [x] Transactional SMS (Termii, code wired up — needs a real `TERMII_API_KEY` to actually deliver) — portal credentials and password resets for parents without email
+- [x] Transactional SMS (Sendchamp, live key configured 2026-08-06) — portal credentials and password resets for parents without email; deliverability still depends on `SENDCHAMP_SENDER_NAME` being an approved sender in the Sendchamp dashboard
 - [x] **Automatic account provisioning** — approving an admission application auto-creates both a student account (reg-number login) and the parent's portal account (reusing one across siblings), links them via the Student record, and sends both sets of credentials to the parent's phone/email. No more manual re-entry of the same data into a second form
 - [x] Student portal — Dashboard (verified against the backend response shape) and Profile (account info + change-password form, replacing the old "Coming Soon" placeholder) are both built
 - [x] Report card module — fully built end-to-end. Model supports both manual score entry (auto-computed grade/remark, draft/publish workflow) and PDF upload (Cloudinary). Admin UI (`admin-frontend/ReportCards.jsx`): student search, score entry, PDF upload, publish/unpublish, print-style preview. Student UI (`frontend/portal/ReportCards.jsx`): formatted on-screen report + PDF download.
@@ -483,7 +483,7 @@ Before development starts, gather the following:
 
 **Quick wins (small, high-value, do anytime):**
 - [ ] Replace `frontend/public/favicon.svg` with the real crest — currently the only place the old placeholder mark still shows up
-- [ ] Get a real `TERMII_API_KEY` (+ approved sender ID) — SMS code is fully wired up but can't deliver without it, which matters most for parents without email and for every student login (always sent via the parent's contact, never has its own)
+- [x] ~~Get a real SMS API key~~ — done, switched to Sendchamp (`SENDCHAMP_API_KEY` live key configured 2026-08-06). Still worth confirming `SENDCHAMP_SENDER_NAME` is an approved sender in the dashboard, or sends will silently fail.
 - [ ] Verify a custom domain in Resend — currently email can only deliver to one sandbox address
 - [x] ~~Notices admin UI~~ — done, `admin-frontend/Notices.jsx`
 - [x] ~~Staff management UI~~ — done, `admin-frontend/Staff.jsx`

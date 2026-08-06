@@ -471,6 +471,38 @@ router.get('/report-cards', authenticateToken, authorizeRoles('admin', 'staff'),
   }
 });
 
+// Each student's single most recent report card (any term/session) — lets
+// a roster view (e.g. the staff class overview) show "Draft" / "Submitted" /
+// "Published" per student instead of always offering a blank "New Report".
+router.get('/report-cards/latest-by-student', authenticateToken, authorizeRoles('admin', 'staff'), async (req, res) => {
+  try {
+    const studentIds = (req.query.studentIds || '').split(',').filter(Boolean);
+    if (studentIds.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const cards = await ReportCard.find({
+      studentId: { $in: studentIds },
+      isActive: true,
+      ...scopedDivisionClassFilter(req.user, {})
+    }).sort({ createdAt: -1 });
+
+    const latestByStudent = {};
+    cards.forEach((card) => {
+      const key = card.studentId.toString();
+      if (!latestByStudent[key]) latestByStudent[key] = card;
+    });
+
+    res.json({ success: true, data: latestByStudent });
+  } catch (error) {
+    console.error('Latest report cards fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while fetching report card status'
+    });
+  }
+});
+
 // Upload a report card for a student
 router.post('/report-cards', authenticateToken, authorizeRoles('admin', 'staff'), uploadReportCard, [
   body('studentId').isMongoId().withMessage('Valid student is required'),
@@ -629,10 +661,16 @@ router.patch('/report-cards/manual/:reportCardId', authenticateToken, authorizeR
     if (!isWithinScope(req.user, existing.division, existing.class)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned classes' });
     }
-    // Once a report card is published only an administrator may change it —
-    // staff edits are locked so released results can't be quietly altered.
-    if (existing.isPublished && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'This report card has been published — only an administrator can edit it.' });
+    // Once a report card is submitted or published only an administrator may
+    // change it — staff edits are locked so a card they've signed off on (or
+    // that's already been released) can't be quietly altered afterward.
+    if ((existing.submittedAt || existing.isPublished) && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: existing.isPublished
+          ? 'This report card has been published — only an administrator can edit it.'
+          : 'This report card has been submitted — only an administrator can edit it now.'
+      });
     }
 
     existing.subjects = req.body.subjects;
@@ -653,6 +691,61 @@ router.patch('/report-cards/manual/:reportCardId', authenticateToken, authorizeR
 
   } catch (error) {
     console.error('Report card update error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while updating the report card'
+    });
+  }
+});
+
+// Submit a manually-entered report card — locks it from further staff edits
+// (an admin can still unsubmit to send it back for corrections). This is
+// separate from publishing: a submitted card is locked but still invisible
+// to parents/students until an admin explicitly publishes it.
+router.patch('/report-cards/manual/:reportCardId/submit', authenticateToken, authorizeRoles('admin', 'staff'), [
+  body('submitted').isBoolean().withMessage('submitted must be true or false')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const existing = await ReportCard.findById(req.params.reportCardId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Report card not found' });
+    }
+    if (existing.type !== 'manual') {
+      return res.status(400).json({ success: false, message: 'Only manually-entered report cards can be submitted' });
+    }
+    if (!isWithinScope(req.user, existing.division, existing.class)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned classes' });
+    }
+    // Un-submitting (sending a card back for corrections) is an admin-only
+    // action — staff can submit forward but shouldn't be able to reopen
+    // something they already signed off on.
+    if (!req.body.submitted && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only an administrator can send a submitted report card back for edits.' });
+    }
+    if (existing.isPublished) {
+      return res.status(400).json({ success: false, message: 'This report card has already been published.' });
+    }
+
+    existing.submittedAt = req.body.submitted ? new Date() : undefined;
+    existing.submittedBy = req.body.submitted ? req.userId : undefined;
+    // Submitting forward clears any old note now that it's presumably been
+    // addressed; sending back is where a new note (if any) comes in.
+    existing.reviewNote = req.body.submitted ? undefined : (req.body.note || undefined);
+    await existing.save();
+
+    res.json({
+      success: true,
+      message: req.body.submitted ? 'Report card submitted for review' : 'Report card sent back for edits',
+      data: existing
+    });
+
+  } catch (error) {
+    console.error('Report card submit toggle error:', error);
     res.status(500).json({
       success: false,
       message: 'An error occurred while updating the report card'
@@ -704,9 +797,9 @@ router.delete('/report-cards/:reportCardId', authenticateToken, authorizeRoles('
     if (!isWithinScope(req.user, existing.division, existing.class)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned classes' });
     }
-    // A published report card can only be removed by an administrator.
-    if (existing.isPublished && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'This report card has been published — only an administrator can delete it.' });
+    // A submitted or published report card can only be removed by an administrator.
+    if ((existing.submittedAt || existing.isPublished) && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'This report card has been submitted — only an administrator can delete it.' });
     }
 
     await ReportCard.findByIdAndUpdate(req.params.reportCardId, { isActive: false });
@@ -2301,10 +2394,16 @@ router.patch('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff
     if (denyIfOutOfExamScope(req, exam)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
     }
-    // Once an exam is published only an admin may change it — staff can't edit
-    // a live exam students may already be sitting.
-    if (exam.isPublished && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'This exam is published — only an administrator can edit it.' });
+    // Once an exam is submitted or published only an admin may change it —
+    // staff can't edit a draft they've signed off on, or a live exam
+    // students may already be sitting.
+    if ((exam.submittedAt || exam.isPublished) && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: exam.isPublished
+          ? 'This exam is published — only an administrator can edit it.'
+          : 'This exam has been submitted — only an administrator can edit it now.'
+      });
     }
 
     const editable = ['title', 'description', 'subject', 'classes', 'durationMinutes', 'startTime', 'endTime', 'questions', 'shuffleQuestions', 'showResultsImmediately'];
@@ -2318,6 +2417,57 @@ router.patch('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staff
   } catch (error) {
     console.error('Exam update error:', error);
     res.status(400).json({ success: false, message: error.message || 'An error occurred while updating exam' });
+  }
+});
+
+// Submit an exam draft — locks it from further staff edits (an admin can
+// still unsubmit to send it back for corrections). Separate from publishing:
+// a submitted exam is locked but still not live for students until an admin
+// explicitly publishes it.
+router.patch('/exams/:examId/submit', authenticateToken, authorizeRoles('admin', 'staff'), [
+  body('submitted').isBoolean().withMessage('submitted must be true or false')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam || !exam.isActive) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+    if (denyIfOutOfExamScope(req, exam)) {
+      return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
+    }
+    // Un-submitting (sending an exam back for corrections) is an admin-only
+    // action — staff can submit forward but shouldn't be able to reopen
+    // something they already signed off on.
+    if (!req.body.submitted && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only an administrator can send a submitted exam back for edits.' });
+    }
+    if (exam.isPublished) {
+      return res.status(400).json({ success: false, message: 'This exam has already been published.' });
+    }
+    if (req.body.submitted && exam.questions.length === 0) {
+      return res.status(400).json({ success: false, message: 'Cannot submit an exam with no questions' });
+    }
+
+    exam.submittedAt = req.body.submitted ? new Date() : undefined;
+    exam.submittedBy = req.body.submitted ? req.userId : undefined;
+    // Submitting forward clears any old note now that it's presumably been
+    // addressed; sending back is where a new note (if any) comes in.
+    exam.reviewNote = req.body.submitted ? undefined : (req.body.note || undefined);
+    await exam.save();
+
+    res.json({
+      success: true,
+      message: req.body.submitted ? 'Exam submitted for review' : 'Exam sent back for edits',
+      data: exam
+    });
+  } catch (error) {
+    console.error('Exam submit toggle error:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while updating exam' });
   }
 });
 
@@ -2363,8 +2513,8 @@ router.delete('/exams/:examId', authenticateToken, authorizeRoles('admin', 'staf
     if (denyIfOutOfExamScope(req, exam)) {
       return res.status(403).json({ success: false, message: 'Access denied - outside your assigned division' });
     }
-    if (exam.isPublished && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'This exam is published — only an administrator can delete it.' });
+    if ((exam.submittedAt || exam.isPublished) && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'This exam has been submitted — only an administrator can delete it.' });
     }
 
     exam.isActive = false;

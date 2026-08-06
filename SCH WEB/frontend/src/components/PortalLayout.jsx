@@ -158,7 +158,7 @@ const PortalLayout = () => {
                     className={`nav-item ${isActive(item) ? 'active' : ''}`}
                     onClick={() => setIsSidebarOpen(false)}
                   >
-                    <SVGIcon name={item.icon} size="20" />
+                    <SVGIcon name={item.icon} size="18" />
                     <span>{item.label}</span>
                   </Link>
                 </li>
